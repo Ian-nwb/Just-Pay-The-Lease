@@ -44,8 +44,6 @@ test-results/
 # Local archive of old build artifacts
 archive/
 
-# Database backups (contain personal data and password hashes); never commit
-database/
 
 # Local editor/agent hook config
 .github/hooks/
