@@ -1,0 +1,58 @@
+{
+  "info": {
+    "name": "Phase 3-4 rent balances and workspace records",
+    "description": "Exercises partial rent confirmation, IOU review, and role-scoped Phase 4 endpoints. Use only an isolated local/test API and database.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "tenant_token", "value": "" },
+    { "key": "landlord_token", "value": "" },
+    { "key": "payment_id", "value": "" },
+    { "key": "iou_id", "value": "" },
+    { "key": "outstanding", "value": "" },
+    { "key": "proposed_due_date", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 Tenant login",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Tenant login succeeds', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('tenant_token', body.token || body.data?.token);", "pm.collectionVariables.set('proposed_due_date', new Date(Date.now() + 7 * 86400000).toISOString());"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"sophia@jptl.dev\",\n  \"password\": \"Password123!\"\n}" }, "url": "{{base_url}}/api/auth/login" }
+    },
+    {
+      "name": "02 Landlord login",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Landlord login succeeds', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('landlord_token', body.token || body.data?.token);"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"landlord@jptl.dev\",\n  \"password\": \"Password123!\"\n}" }, "url": "{{base_url}}/api/auth/login" }
+    },
+    {
+      "name": "03 Tenant finds a due invoice with a balance",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Tenant ledger loads', () => pm.response.to.have.status(200));", "const invoice = (pm.response.json().data?.history || []).find(p => ['pending', 'overdue', 'partially_paid'].includes(p.status) && p.reviewStatus !== 'pending_review' && Number(p.outstandingBalance ?? p.amount) > 0);", "pm.test('A due invoice is available', () => pm.expect(invoice?.paymentId).to.be.ok);", "if (invoice) { pm.collectionVariables.set('payment_id', invoice.paymentId); pm.collectionVariables.set('outstanding', String(invoice.outstandingBalance ?? invoice.amount)); }"] } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }], "url": "{{base_url}}/api/tenant/payments" }
+    },
+    {
+      "name": "04 Tenant submits a partial onsite amount",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Partial onsite request is accepted', () => pm.response.to.have.status(201));", "pm.test('It awaits review and remains unpaid', () => { const body = pm.response.json().data; pm.expect(body.reviewStatus).to.equal('pending_review'); pm.expect(body.status).not.to.equal('paid'); });"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"amount\": 1,\n  \"note\": \"Partial payment contract check\"\n}" }, "url": "{{base_url}}/api/tenant/payments/{{payment_id}}/pay-onsite" }
+    },
+    {
+      "name": "05 Landlord approves the partial amount",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Landlord review succeeds', () => pm.response.to.have.status(200));", "const payment = pm.response.json().data;", "pm.test('Approval records a balance instead of clearing it', () => { pm.expect(payment.paidAmount).to.be.at.least(1); pm.expect(payment.outstandingBalance).to.be.greaterThan(0); pm.expect(payment.status).to.equal('partially_paid'); });"] } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\"\n}" }, "url": "{{base_url}}/api/landlord/rentroll/{{payment_id}}/review" }
+    },
+    {
+      "name": "06 Tenant requests an IOU for the remaining balance",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('IOU request is created', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('iou_id', pm.response.json().data._id);"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"amount\": {{outstanding}},\n  \"reason\": \"Unexpected expense affected this month\",\n  \"proposedDueDate\": \"{{proposed_due_date}}\"\n}" }, "url": "{{base_url}}/api/tenant/payments/{{payment_id}}/ious" }
+    },
+    {
+      "name": "07 Landlord approves IOU without clearing the rent invoice",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('IOU review succeeds', () => pm.response.to.have.status(200));", "pm.test('IOU is an agreement, not a payment', () => pm.expect(pm.response.json().data.status).to.equal('approved'));"] } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\"\n}" }, "url": "{{base_url}}/api/landlord/rentroll/ious/{{iou_id}}/review" }
+    },
+    {
+      "name": "08 Tenant reads scoped workspace contacts",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Contacts endpoint is tenant-accessible', () => pm.response.to.have.status(200));", "pm.test('Only a contact list is returned', () => pm.expect(pm.response.json().data).to.be.an('array'));"] } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }], "url": "{{base_url}}/api/workspace/messages/contacts" }
+    }
+  ]
+}

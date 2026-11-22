@@ -1,0 +1,168 @@
+import React from 'react';
+import { X, Printer, Download, CheckCircle2, ShieldCheck, Building2, FileText } from 'lucide-react';
+import { formatPhp } from '../../utils/currency';
+
+export const TenantReceiptModal = ({
+  isOpen,
+  onClose,
+  transaction,
+  tenant,
+  unit,
+  property,
+}) => {
+  if (!isOpen || !transaction) return null;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const amount = Number(transaction.amount || 0);
+  const hasParking = Boolean(transaction.hasParking ?? tenant?.hasParking ?? unit?.hasParking ?? (transaction.parkingFee > 0));
+  const parkingSpot = transaction.parkingSpot || tenant?.parkingSpot || unit?.parkingSpot || (hasParking ? 'Assigned Space' : null);
+  const parkingFee = transaction.parkingFee !== undefined 
+    ? Number(transaction.parkingFee) 
+    : (hasParking ? Number(tenant?.parkingFee ?? unit?.parkingFee ?? 0) : 0);
+  const baseRent = transaction.baseRent ?? Math.max(0, amount - parkingFee - (transaction.utilityFee ?? 0));
+  const utilitiesFee = transaction.utilityFee ?? Math.max(0, amount - baseRent - parkingFee);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto print:p-0 print:static print:bg-white">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200 print:hidden"
+        onClick={onClose}
+      />
+
+      {/* Modal Card */}
+      <div className="relative w-full max-w-xl bg-white dark:bg-surface border border-slate-200 dark:border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 my-8 top-shade modal-enter modal-enter-active apple-glass print:shadow-none print:border-none print:rounded-none print:w-full print:max-w-none print:bg-white print:text-black">
+        
+        {/* Close & Print Buttons */}
+        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-200 dark:border-slate-800 print:hidden">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
+              <FileText className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold font-grotesk text-slate-900 dark:text-white uppercase tracking-wider">
+              Landlord-Approved Payment Confirmation
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-xs font-semibold btn-press flex items-center gap-1.5"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center border border-slate-200 dark:border-slate-800 btn-press"
+              aria-label="Close dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* RECEIPT FORMAL CONTENT */}
+        <div className="space-y-6 text-slate-900 dark:text-slate-100 print:text-black">
+          
+          {/* Header Letterhead */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800/80">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <span className="font-grotesk font-extrabold text-base tracking-tight">
+                  JPTL<span className="text-indigo-600 dark:text-indigo-400 print:text-indigo-600">.SYSTEM</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-600 font-mono">
+                Property payment record
+              </p>
+            </div>
+
+            <div className="sm:text-right font-mono text-xs">
+              <span className="badge badge-success uppercase tracking-wider inline-flex items-center gap-1 mb-1">
+                <CheckCircle2 className="w-3 h-3" /> Landlord approved
+              </span>
+              <p className="text-slate-400 font-mono text-xs">Date: {transaction.paidAt || (transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : '—')}</p>
+              <p className="text-indigo-500 font-bold text-xs">Receipt #: {transaction.id || transaction.transactionId}</p>
+            </div>
+          </div>
+
+          {/* Tenant & Unit Info */}
+          <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60 text-xs font-mono">
+            <div>
+              <span className="text-slate-400 uppercase text-xs block">Resident / Billed To</span>
+              <strong className="text-slate-900 dark:text-white text-sm">{tenant?.name || 'Tenant'}</strong>
+              <p className="text-slate-500">{tenant?.email || ''}</p>
+            </div>
+            <div>
+              <span className="text-slate-400 uppercase text-xs block">Property & Unit</span>
+              <strong className="text-slate-900 dark:text-white text-sm">{unit?.label || 'Unit'}</strong>
+              <p className="text-slate-500">{property?.name || 'Property'}</p>
+            </div>
+          </div>
+
+          {/* Itemized Charge Ledger Table */}
+          <div className="space-y-2">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+              Itemized Line Items
+            </span>
+
+            <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden text-xs font-mono">
+              <div className="p-3 flex justify-between bg-slate-100/50 dark:bg-slate-900/50 font-semibold text-slate-500">
+                <span>Description</span>
+                <span>Amount</span>
+              </div>
+              <div className="p-3 flex justify-between">
+                <span>Base Monthly Rent ({transaction.period || 'August 2026'})</span>
+                <span className="font-bold text-slate-900 dark:text-white">{formatPhp(baseRent)}</span>
+              </div>
+              {parkingFee > 0 && (
+                <div className="p-3 flex justify-between">
+                  <span>Assigned Parking ({parkingSpot})</span>
+                  <span className="font-bold text-slate-900 dark:text-white">${parkingFee.toFixed(2)}</span>
+                </div>
+              )}
+              {utilitiesFee > 0 && (
+                <div className="p-3 flex justify-between">
+                <span>Utilities</span>
+                  <span className="font-bold text-slate-900 dark:text-white">${utilitiesFee.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="p-3.5 bg-emerald-500/5 flex justify-between text-sm font-bold text-slate-900 dark:text-white">
+                <span>Total Amount Paid</span>
+                <span className="text-emerald-600 dark:text-emerald-400">{formatPhp(amount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Method Details */}
+          <div className="flex items-center justify-between text-xs font-mono p-3 rounded-xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60">
+            <span className="text-slate-400">Payment Instrument:</span>
+            <span className="font-semibold text-slate-900 dark:text-white">{transaction.method || transaction.paymentMethod || 'Landlord-approved payment'}</span>
+          </div>
+
+          {/* Legal Manager Signature */}
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center gap-2 text-slate-400 text-xs">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <span>Payment approval recorded by your landlord.</span>
+            </div>
+            <div className="text-right">
+              <span className="text-slate-400 text-xs block">Receipt reference</span>
+              <span className="font-bold font-grotesk text-slate-900 dark:text-white">{transaction.receiptNumber || transaction.id || transaction.transactionId}</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+};

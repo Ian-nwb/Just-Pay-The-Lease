@@ -1,0 +1,39 @@
+{
+  "info": {
+    "name": "Tenant Payment Ledger and Manual Review",
+    "description": "Checks the current real payment submission endpoints, disabled simulation paths, tenant ledger, and access guards.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "tenant_token", "value": "", "type": "string" },
+    { "key": "payment_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "01. Tenant login",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Tenant login succeeds', () => pm.response.to.have.status(200));", "const r = pm.response.json();", "const token = r.token || r.data?.token;", "if (token) pm.collectionVariables.set('tenant_token', token);"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"sophia@jptl.dev\",\n  \"password\": \"Password123!\"\n}" }, "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] } }
+    },
+    {
+      "name": "02. Read tenant payment ledger",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Ledger is available', () => pm.response.to.have.status(200));", "const data = pm.response.json().data;", "pm.test('Ledger includes invoice history and manual review status', () => { pm.expect(data.history).to.be.an('array'); pm.expect(data).to.have.property('paymentMethods'); });", "const invoice = (data.history || []).find(p => ['pending', 'overdue'].includes(p.status));", "if (invoice?.paymentId) pm.collectionVariables.set('payment_id', invoice.paymentId);"] } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }], "url": { "raw": "{{base_url}}/api/tenant/payments", "host": ["{{base_url}}"], "path": ["api", "tenant", "payments"] } }
+    },
+    {
+      "name": "03. Read landlord-configured payment options",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Options endpoint is available', () => pm.response.to.have.status(200));", "pm.test('Options are an array', () => pm.expect(pm.response.json().data).to.be.an('array'));" ] } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }], "url": { "raw": "{{base_url}}/api/tenant/payments/options", "host": ["{{base_url}}"], "path": ["api", "tenant", "payments", "options"] } }
+    },
+    {
+      "name": "04. Reject simulated card checkout",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Simulated card flow has been retired', () => pm.response.to.have.status(410));"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"paymentMethod\": \"card\"\n}" }, "url": { "raw": "{{base_url}}/api/tenant/payments/pay", "host": ["{{base_url}}"], "path": ["api", "tenant", "payments", "pay"] } }
+    },
+    {
+      "name": "05. Retain unpaid amount while landlord review is pending",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Review queue is scoped to landlord', () => pm.response.to.have.status(403));"] } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }], "url": { "raw": "{{base_url}}/api/landlord/rentroll", "host": ["{{base_url}}"], "path": ["api", "landlord", "rentroll"] } }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+import Announcement from '../../../shared/models/announcements.model.js';
+import User from '../../../shared/models/user.model.js';
+import TenantProfile from '../../../shared/models/tenantProfile.model.js';
+import Property from '../../../shared/models/property.model.js';
+
+export async function getTenantFeed(tenantId, { category, search, page = 1, limit = 20 }) {
+  // 1. Find tenant to extract their assigned landlord ID
+  const tenant = await User.findById(tenantId);
+  if (!tenant) {
+    return { announcements: [], meta: { total: 0, page: 1, pages: 0 } };
+  }
+
+  let landlordId = tenant.landlord;
+  if (!landlordId) {
+    const profile = await TenantProfile.findOne({ user: tenantId }).populate('property');
+    landlordId = profile?.property?.landlord || null;
+  }
+  if (!landlordId) {
+    const anyAdmin = await User.findOne({ role: 'landlord' }).select('_id');
+    landlordId = anyAdmin?._id;
+  }
+
+  if (!landlordId) {
+    return { announcements: [], meta: { total: 0, page: 1, pages: 0 } };
+  }
+
+  // 2. Query announcements strictly created by their assigned landlord
+  const profile = await TenantProfile.findOne({ user: tenantId }).select('property').lean();
+  const query = { author: landlordId, $and: [{ $or: [{ property: null }, ...(profile?.property ? [{ property: profile.property }] : [])] }] };
+
+  if (category && category !== 'All') {
+    query.category = category;
+  }
+
+  if (search) {
+    query.$and.push({ $or: [
+      { title: { $regex: search, $options: 'i' } },
+      { content: { $regex: search, $options: 'i' } },
+    ] });
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [rawAnnouncements, total] = await Promise.all([
+    Announcement.find(query)
+      .populate('author', 'firstName lastName role')
+      .sort({ isPinned: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    Announcement.countDocuments(query),
+  ]);
+
+  const announcements = rawAnnouncements.map((a) => ({
+    ...a,
+    id: a._id,
+    body: a.content,
+  }));
+
+  return {
+    announcements,
+    meta: {
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit),
+    },
+  };
+}
+
+export async function getAnnouncementById(tenantId, announcementId) {
+  const tenant = await User.findById(tenantId).select('landlord').lean();
+  const profile = await TenantProfile.findOne({ user: tenantId }).select('property').lean();
+  const property = profile?.property ? await Property.findById(profile.property).select('landlord').lean() : null;
+  const landlordId = tenant?.landlord || property?.landlord;
+  const notice = await Announcement.findOne({ _id: announcementId, author: landlordId, $or: [{ property: null }, ...(profile?.property ? [{ property: profile.property }] : [])] }).populate('author', 'firstName lastName role');
+  if (!notice) {
+    throw new Error('Notice not found');
+  }
+  return notice;
+}

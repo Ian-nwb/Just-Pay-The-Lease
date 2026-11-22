@@ -1,0 +1,53 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node scripts/seed.js",
+    "purge": "node scripts/purge.js",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testTimeout=30000",
+    "test:integration:phase3-4": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testTimeout=30000 src/modules/workspace/phase3-4.test.js",
+    "test:date-policy": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testTimeout=30000 src/shared/utils/propertyDatePolicy.test.js",
+    "test:plan-entitlements": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testTimeout=30000 src/shared/services/planEntitlements.service.test.js",
+    "test:postman": "npm --prefix ../.. run test:postman",
+    "test:e2e": "npm --prefix ../.. run test:e2e",
+    "env:encrypt": "openssl aes-256-cbc -salt -pbkdf2 -in .env -out .env.enc -k",
+    "env:decrypt": "openssl aes-256-cbc -d -pbkdf2 -in .env.enc -out .env -k",
+    "seed:demo": "SEED_DEMO_CONFIRM=1 node scripts/seed-demo.js --execute",
+    "reset:dry-run": "node scripts/reset-except-superadmin.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
+    "compression": "^1.8.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.9.3",
+    "multer": "^2.3.0",
+    "nodemailer": "^10.0.9",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.20.2",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "cross-env": "^10.1.0",
+    "jest": "^30.5.1",
+    "mongodb-memory-server": "^11.2.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
+  }
+}

@@ -1,0 +1,233 @@
+import request from 'supertest';
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import jwt from 'jsonwebtoken';
+import app from '../../../../app.js';
+import User from '../../../shared/models/user.model.js';
+import Property from '../../../shared/models/property.model.js';
+import Unit from '../../../shared/models/unit.model.js';
+
+let mongoServer;
+let landlordToken;
+let landlordUser;
+let property;
+let unit;
+let indefiniteUnit;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  const uri = mongoServer.getUri();
+  await mongoose.connect(uri);
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key-12345';
+
+  landlordUser = await User.create({
+    firstName: 'Alexander',
+    lastName: 'Vance',
+    email: 'alexander.vance@example.com',
+    password: 'Password123!',
+    role: 'landlord',
+    status: 'active',
+  });
+
+  landlordToken = jwt.sign(
+    { _id: landlordUser._id, id: landlordUser._id, role: 'landlord', email: landlordUser.email },
+    process.env.JWT_SECRET,
+    { expiresIn: '1d' }
+  );
+
+  property = await Property.create({
+    name: 'Aura Sky Towers',
+    address: '88 Horizon Blvd',
+    city: 'Metro Central',
+    landlord: landlordUser._id,
+  });
+
+  unit = await Unit.create({
+    label: 'Unit 18C',
+    property: property._id,
+    monthlyRent: 2600,
+    bedrooms: 2,
+    bathrooms: 2,
+    sqft: 1200,
+    status: 'vacant',
+  });
+  indefiniteUnit = await Unit.create({
+    label: 'Unit 19C', property: property._id, monthlyRent: 2700, bedrooms: 1,
+    bathrooms: 1, sqft: 800, status: 'vacant',
+  });
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongoServer.stop();
+});
+
+describe('Tenant Directory Module API (/api/landlord/tenantdirectory)', () => {
+  let createdTenantId;
+
+  it('POST /api/landlord/tenantdirectory - should create and onboard a new tenant', async () => {
+    const res = await request(app)
+      .post('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({
+        firstName: 'Marcus',
+        lastName: 'Chen',
+        email: 'marcus.chen@example.com',
+        phone: '+1 (555) 777-8899',
+        propertyId: property._id,
+        unitId: unit._id,
+        monthlyRent: 2600,
+        leaseStart: '2026-02-01',
+        leaseEnd: '2027-01-31',
+        status: 'active',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.email).toBe('marcus.chen@example.com');
+    createdTenantId = res.body.data.id || res.body.data._id;
+
+    // Verify unit became occupied
+    const updatedUnit = await Unit.findById(unit._id);
+    expect(updatedUnit.status).toBe('occupied');
+  });
+
+  it('creates an indefinite lease assignment without an expiration date', async () => {
+    const res = await request(app)
+      .post('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({
+        firstName: 'Ari', lastName: 'Rivera', email: 'ari.rivera@example.com',
+        propertyId: property._id, unitId: indefiniteUnit._id, monthlyRent: 2700,
+        leaseStart: '2026-10-01', leaseType: 'indefinite', leaseEnd: null, status: 'active',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.leaseType).toBe('indefinite');
+    expect(res.body.data.leaseEnd).toBeNull();
+    const updatedUnit = await Unit.findById(indefiniteUnit._id);
+    expect(updatedUnit.leaseType).toBe('indefinite');
+    expect(updatedUnit.leaseEnd).toBeNull();
+  });
+
+  it('GET /api/landlord/tenantdirectory - should list all tenants', async () => {
+    const res = await request(app)
+      .get('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('honors tenant phone and vehicle sharing preferences in landlord directory responses', async () => {
+    await User.findByIdAndUpdate(createdTenantId, {
+      $set: {
+        'preferences.privacy.showPhoneToLandlord': false,
+        'preferences.privacy.showVehiclesToLandlord': false,
+      },
+    });
+    const list = await request(app)
+      .get('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`]);
+    const listedTenant = list.body.data.find((tenant) => String(tenant.id) === String(createdTenantId));
+    expect(listedTenant.phone).toBe('');
+
+    const detail = await request(app)
+      .get(`/api/landlord/tenantdirectory/${createdTenantId}`)
+      .set('Cookie', [`token=${landlordToken}`]);
+    expect(detail.body.data.phone).toBe('');
+    expect(detail.body.data.vehicles).toEqual([]);
+    await User.findByIdAndUpdate(createdTenantId, {
+      $set: {
+        'preferences.privacy.showPhoneToLandlord': true,
+        'preferences.privacy.showVehiclesToLandlord': true,
+      },
+    });
+  });
+
+  it('GET /api/landlord/tenantdirectory/:id - should get detailed profile of tenant', async () => {
+    const res = await request(app)
+      .get(`/api/landlord/tenantdirectory/${createdTenantId}`)
+      .set('Cookie', [`token=${landlordToken}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.firstName).toBe('Marcus');
+  });
+
+  it('PUT /api/landlord/tenantdirectory/:id - should update tenant details', async () => {
+    const res = await request(app)
+      .put(`/api/landlord/tenantdirectory/${createdTenantId}`)
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({
+        phone: '+1 (555) 999-0011',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.phone).toBe('+1 (555) 999-0011');
+  });
+
+  it('DELETE /api/landlord/tenantdirectory/:id - should delete tenant and release unit', async () => {
+    const res = await request(app)
+      .delete(`/api/landlord/tenantdirectory/${createdTenantId}`)
+      .set('Cookie', [`token=${landlordToken}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Verify unit was released to vacant
+    const updatedUnit = await Unit.findById(unit._id);
+    expect(updatedUnit.status).toBe('vacant');
+    expect(updatedUnit.tenant).toBeNull();
+  });
+});
+
+describe('Error Handling', () => {
+  it('rejects impossible lease dates before creating a tenant account', async () => {
+    const res = await request(app)
+      .post('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({
+        firstName: 'Date', lastName: 'Boundary', email: 'invalid.date@example.com',
+        unitId: indefiniteUnit._id, leaseType: 'indefinite', leaseStart: '2026-02-30',
+      });
+    expect(res.status).toBe(400);
+    expect(await User.findOne({ email: 'invalid.date@example.com' })).toBeNull();
+  });
+
+  it('returns 401 when no auth token is provided', async () => {
+    const res = await request(app).get('/api/landlord/tenantdirectory');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 409 when registering duplicate tenant email', async () => {
+    const res = await request(app)
+      .post('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({
+        firstName: 'Duplicate',
+        lastName: 'User',
+        email: 'alexander.vance@example.com',
+      });
+    expect(res.status).toBe(409);
+  });
+
+  it('returns 404 when getting non-existent tenant profile', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+    const res = await request(app)
+      .get(`/api/landlord/tenantdirectory/${fakeId}`)
+      .set('Cookie', [`token=${landlordToken}`]);
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when missing required tenant fields on registration', async () => {
+    const res = await request(app)
+      .post('/api/landlord/tenantdirectory')
+      .set('Cookie', [`token=${landlordToken}`])
+      .send({});
+    expect(res.status).toBe(400);
+  });
+});

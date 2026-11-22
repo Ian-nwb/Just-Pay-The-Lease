@@ -1,0 +1,200 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+@layer base {
+  :root {
+    --font-grotesk: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+  }
+  body { font-family: var(--font-sans); }
+}
+
+.font-grotesk {
+  font-family: var(--font-grotesk);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-sans, .font-grotesk { font-feature-settings: "kern"; }
+
+/* Legacy `font-mono` was used as decoration on labels and figures. It now renders in
+   IBM Plex Sans with tabular figures, so numbers still align. Use `.font-code` for
+   genuine codes (IDs, references, receipt numbers), which stay in IBM Plex Mono. */
+.font-mono {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+.font-mono:is(.uppercase) { letter-spacing: 0.04em; }
+.font-code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Former shimmer text: solid ink (gradient text is not part of the system). */
+.gradient-shimmer { color: var(--ink-strong); }
+
+
+/* Former animated border beam: plain token border. */
+.border-beam { border-color: var(--line); }
+
+/* Spotlight cards: flat surface with a hover border. */
+.spotlight-card { transition: border-color 180ms var(--ease-out), background-color 180ms var(--ease-out); }
+.spotlight-card:hover { border-color: var(--line-strong); }
+
+/* Tactile Button Press Effect (Emil + Apple direct manipulation) */
+.btn-press {
+  transition: transform 120ms var(--ease-out), opacity 120ms var(--ease-out), background-color 120ms var(--ease-out);
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Card surfaces (formerly glass / top-shade): token surface, border and soft elevation. */
+.apple-glass {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+.top-shade { box-shadow: var(--shadow-card); }
+.bg-efferd-radial { background: var(--app); }
+
+/* Scroll Reveal Utilities */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+}
+.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-init {
+    transform: none !important;
+    transition: opacity 300ms ease !important;
+  }
+}
+
+
+/* Emil Kowalski Popover & Modal Animation (starts from scale(0.95), never scale(0)) */
+.modal-enter {
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+.modal-enter-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Emil Kowalski Sidebar & Notification Drawer Animation (translateX from edge, interruptible) */
+.drawer-slide-in {
+  animation: drawerSlideIn 180ms var(--ease-out) forwards;
+}
+
+@keyframes drawerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Mobile Safe Area and Bottom Navigation Utilities */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}
+
+.bottom-sheet-enter {
+  animation: bottomSheetEnter 220ms var(--ease-drawer) forwards;
+}
+
+@keyframes bottomSheetEnter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Landing page: editorial zinc palette, scoped to .landing ─────────── */
+.landing {
+  --l-bg: #FAFAFA;
+  --l-card: #FFFFFF;
+  --l-line: #E4E4E7;
+  --l-line-soft: #F0F0F2;
+  --l-ink: #09090B;
+  --l-ink-soft: #3F3F46;
+  --l-muted: #52525B;
+  --l-faint: #71717A;
+  --l-primary: #09090B;
+  --l-primary-hover: #27272A;
+  --l-primary-ink: #FFFFFF;
+  --l-positive: #059669;
+  --l-positive-ink: #047857;
+  --l-attention: #D97706;
+  --l-attention-ink: #B45309;
+  --l-shadow: 0 1px 1px rgba(9, 9, 11, 0.04), 0 4px 8px -2px rgba(9, 9, 11, 0.06), 0 24px 48px -16px rgba(9, 9, 11, 0.14);
+  background: var(--l-bg);
+  color: var(--l-ink);
+}
+.dark .landing {
+  --l-bg: #09090B;
+  --l-card: #111113;
+  --l-line: #27272A;
+  --l-line-soft: #18181B;
+  --l-ink: #FAFAFA;
+  --l-ink-soft: #D4D4D8;
+  --l-muted: #A1A1AA;
+  --l-faint: #A1A1AA;
+  --l-primary: #FAFAFA;
+  --l-primary-hover: #E4E4E7;
+  --l-primary-ink: #09090B;
+  --l-positive: #34D399;
+  --l-positive-ink: #34D399;
+  --l-attention: #FBBF24;
+  --l-attention-ink: #FBBF24;
+  --l-shadow: 0 1px 1px rgba(0, 0, 0, 0.4), 0 24px 48px -16px rgba(0, 0, 0, 0.6);
+}
+.landing ::selection { background: #E4E4E7; color: #09090B; }
+
+/* Architectural grid behind the hero, fading out toward the bottom. */
+.landing-grid {
+  background-image:
+    linear-gradient(to right, var(--l-line-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--l-line-soft) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+.l-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  height: 2.75rem; padding: 0 1.125rem; border-radius: 8px; border: 1px solid transparent;
+  font: 500 0.9375rem/1 var(--font-sans); white-space: nowrap; cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.l-btn:active { transform: scale(0.98); }
+.l-btn:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+.l-btn-sm { height: 2.25rem; padding: 0 0.875rem; font-size: 0.875rem; border-radius: 6px; }
+.l-btn-primary { background: var(--l-primary); color: var(--l-primary-ink); }
+.l-btn-primary:hover { background: var(--l-primary-hover); }
+.l-btn-secondary { background: var(--l-card); color: var(--l-ink); border-color: var(--l-line); box-shadow: 0 1px 1px rgba(9, 9, 11, 0.04); }
+.l-btn-secondary:hover { border-color: var(--l-faint); }
+.l-btn-ghost { background: transparent; color: var(--l-ink-soft); }
+.l-btn-ghost:hover { color: var(--l-ink); background: var(--l-line-soft); }
+
+@keyframes landingRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.landing-rise { animation: landingRise 700ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@media (prefers-reduced-motion: reduce) { .landing-rise { animation: none; } }

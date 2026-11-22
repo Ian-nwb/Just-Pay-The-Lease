@@ -1,0 +1,581 @@
+import React, { useState, useEffect } from 'react';
+import { X, Building2, Layers, DollarSign, Home, Check, AlertCircle, Plus, MapPin, Maximize2, Loader2 } from 'lucide-react';
+import { onlyDecimal, onlyDigits, handleNumericKeyDown } from '../../utils/numberSanitizers';
+import { useToast } from '../../context/ToastContext';
+
+export const AddPropertyOrUnitModal = ({
+  isOpen,
+  onClose,
+  initialTab = 'unit', // 'property' | 'unit'
+  properties = [],
+  initialPropertyId = null,
+  targetMemberId = null,
+  defaultTimezone = 'Asia/Manila',
+  onPropertyCreated = () => {},
+  onUnitCreated = () => {},
+}) => {
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Property Form State
+  const [propertyName, setPropertyName] = useState('');
+  const [propertyAddress, setPropertyAddress] = useState('');
+  const [propertyCity, setPropertyCity] = useState('');
+  const [propertyCategory, setPropertyCategory] = useState('Luxury');
+  const [propertyTimezone, setPropertyTimezone] = useState(defaultTimezone);
+  const [renewalWindowDays, setRenewalWindowDays] = useState('60');
+  const [petsAllowed, setPetsAllowed] = useState(false);
+  const [parkingAvailable, setParkingAvailable] = useState(false);
+  const [gateCode, setGateCode] = useState('');
+  const [wifiSsid, setWifiSsid] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [buildingRulesText, setBuildingRulesText] = useState('');
+
+  // Unit Form State
+  const [selectedPropertyId, setSelectedPropertyId] = useState('');
+  const [unitLabel, setUnitLabel] = useState('');
+  const [monthlyRent, setMonthlyRent] = useState('');
+  const [bedrooms, setBedrooms] = useState('2');
+  const [bathrooms, setBathrooms] = useState('2');
+  const [sqft, setSqft] = useState('1000');
+  const [hasParking, setHasParking] = useState(false);
+  const [unitPetPolicy, setUnitPetPolicy] = useState('inherit');
+  const [parkingSpot, setParkingSpot] = useState('');
+  const [parkingFee, setParkingFee] = useState('0');
+  const [utilityBilling, setUtilityBilling] = useState(['electricity', 'water', 'internet'].map((utilityType) => ({ utilityType, billingMode: 'separate_meter', monthlyShare: '0' })));
+
+  const [errors, setErrors] = useState({});
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+      setErrors({});
+      setSuccessMessage('');
+      setIsSubmitting(false);
+      
+      // Reset forms
+      setPropertyName('');
+      setPropertyAddress('');
+      setPropertyCity('');
+      setPropertyCategory('Luxury');
+      setPropertyTimezone(defaultTimezone);
+      setRenewalWindowDays('60');
+      setPetsAllowed(false);
+      setParkingAvailable(false);
+      setGateCode('');
+      setWifiSsid('');
+      setWifiPassword('');
+      setBuildingRulesText('');
+
+      setUnitLabel('');
+      setMonthlyRent('');
+      setBedrooms('2');
+      setBathrooms('2');
+      setSqft('1000');
+      setHasParking(false);
+      setUnitPetPolicy('inherit');
+      setParkingSpot('');
+      setParkingFee('0');
+      setUtilityBilling(['electricity', 'water', 'internet'].map((utilityType) => ({ utilityType, billingMode: 'separate_meter', monthlyShare: '0' })));
+
+      if (initialPropertyId) {
+        setSelectedPropertyId(initialPropertyId);
+      } else if (properties.length > 0) {
+        setSelectedPropertyId(properties[0].id || properties[0]._id);
+      }
+    }
+  }, [isOpen, initialTab, properties, initialPropertyId, defaultTimezone]);
+
+  if (!isOpen) return null;
+
+  const handleCreateProperty = async (e) => {
+    e.preventDefault();
+    const errs = {};
+    if (!propertyName.trim()) errs.propertyName = 'Property name is required';
+    if (!propertyAddress.trim()) errs.propertyAddress = 'Address is required';
+    if (propertyName.trim().length > 120) errs.propertyName = 'Use 120 characters or fewer';
+    if (propertyAddress.trim().length > 240) errs.propertyAddress = 'Use 240 characters or fewer';
+    if (propertyCity.trim().length > 120) errs.propertyCity = 'Use 120 characters or fewer';
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setIsSubmitting(true);
+    const newProp = {
+      id: `prop-custom-${Date.now()}`,
+      name: propertyName.trim(),
+      address: propertyAddress.trim(),
+      city: propertyCity.trim() || 'Metro Area',
+      image: '/images/property-1.jpg',
+      unitsCount: 0,
+      occupancyRate: 0,
+      landlordName: 'Alexander Vance',
+      featured: false,
+      category: propertyCategory,
+      timezone: propertyTimezone,
+      renewalWindowDays: Number(renewalWindowDays),
+      petsAllowed,
+      parkingAvailable,
+      accessCodes: { gateCode: gateCode.trim(), wifiSsid: wifiSsid.trim(), wifiPassword },
+      buildingRules: buildingRulesText.split('\n').map((rule) => rule.trim()).filter(Boolean),
+    };
+
+    try {
+      const createdProp = await onPropertyCreated(newProp);
+      const realPropId = createdProp?._id || createdProp?.id || newProp.id;
+      setSuccessMessage(`Property "${newProp.name}" created successfully!`);
+      toast.success(`Property "${newProp.name}" created successfully!`);
+      
+      setTimeout(() => {
+        setSuccessMessage('');
+        if (realPropId) {
+          setSelectedPropertyId(realPropId);
+        }
+        setActiveTab('unit');
+      }, 600);
+    } catch (err) {
+      setErrors({ propertyName: err.message || 'Failed to create property' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateUnit = async (e) => {
+    e.preventDefault();
+    const errs = {};
+    if (!unitLabel.trim()) errs.unitLabel = 'Unit name/label is required';
+    if (!monthlyRent || Number(monthlyRent) <= 0) errs.monthlyRent = 'Valid monthly rent is required';
+    if (!selectedPropertyId) errs.selectedPropertyId = 'Please select a property';
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    const matchedProperty = properties.find((p) => p.id === selectedPropertyId || p._id === selectedPropertyId);
+
+    const newUnit = {
+      id: `unit-custom-${Date.now()}`,
+      propertyId: selectedPropertyId,
+      propertyName: matchedProperty?.name || 'Custom Property',
+      label: unitLabel.trim(),
+      monthlyRent: Number(monthlyRent),
+      status: 'vacant',
+      bedrooms: Number(bedrooms) || 1,
+      bathrooms: Number(bathrooms) || 1,
+      sqft: Number(sqft) || 800,
+      hasParking,
+      parkingSpot: hasParking ? parkingSpot.trim() : '',
+      parkingFee: hasParking ? Number(parkingFee) || 0 : 0,
+      petsAllowed: unitPetPolicy === 'inherit' ? undefined : unitPetPolicy === 'allowed',
+      utilityBilling: utilityBilling.map((bill) => ({ ...bill, monthlyShare: Number(bill.monthlyShare) || 0 })),
+    };
+
+    setIsSubmitting(true);
+    try {
+      await onUnitCreated(newUnit, targetMemberId);
+      setSuccessMessage(`Unit "${newUnit.label}" created and available!`);
+      toast.success(`Unit "${newUnit.label}" created successfully!`);
+
+      setTimeout(() => {
+        setSuccessMessage('');
+        onClose();
+      }, 600);
+    } catch (err) {
+      setErrors({ unitLabel: err.message || 'Failed to create unit' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+
+      {/* Modal Card */}
+      <div className="relative w-full max-w-lg bg-white dark:bg-surface border border-slate-200 dark:border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 my-8">
+        
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center border border-slate-200 dark:border-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          aria-label="Close modal"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Tab Switcher Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
+            {activeTab === 'property' ? <Building2 className="w-5 h-5" /> : <Layers className="w-5 h-5" />}
+          </div>
+          <div>
+            <h2 className="text-xl font-bold font-grotesk text-slate-900 dark:text-white">
+              {activeTab === 'property' ? 'Add New Property' : 'Add New Unit'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {activeTab === 'property'
+                ? 'Create a new real estate building or estate'
+                : 'Create a vacant unit to assign to a tenant'}
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs Button Group */}
+        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-surface-sunken rounded-xl mb-5 border border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('unit'); setErrors({}); }}
+            className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'unit'
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Create Unit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('property'); setErrors({}); }}
+            className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'property'
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Create Property</span>
+          </button>
+        </div>
+
+        {/* Success Feedback Alert */}
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2 font-medium animate-in fade-in">
+            <Check className="w-4 h-4 shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
+        {/* ──── TAB 1: CREATE PROPERTY ──── */}
+        {activeTab === 'property' && (
+          <form onSubmit={handleCreateProperty} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                Property Name *
+              </label>
+              <div className="relative">
+                <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+                <input
+                  type="text"
+                  value={propertyName}
+                  maxLength={120}
+                  onChange={(e) => { setPropertyName(e.target.value); setErrors((prev) => ({ ...prev, propertyName: '' })); }}
+                  placeholder="e.g. Grand Horizon Towers"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              {errors.propertyName && (
+                <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.propertyName}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                Street Address *
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+                <input
+                  type="text"
+                  value={propertyAddress}
+                  maxLength={240}
+                  onChange={(e) => { setPropertyAddress(e.target.value); setErrors((prev) => ({ ...prev, propertyAddress: '' })); }}
+                  placeholder="e.g. 500 Ocean Avenue, Suite 100"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              {errors.propertyAddress && (
+                <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.propertyAddress}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  City / Location
+                </label>
+                <input
+                  type="text"
+                  value={propertyCity}
+                  maxLength={120}
+                  onChange={(e) => setPropertyCity(e.target.value)}
+                  placeholder="e.g. Downtown Metro"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Property Category
+                </label>
+                <select
+                  value={propertyCategory}
+                  onChange={(e) => setPropertyCategory(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="Luxury">Luxury</option>
+                  <option value="Residential">Residential</option>
+                  <option value="Studio">Studio</option>
+                  <option value="Penthouse">Penthouse</option>
+                  <option value="Commercial">Commercial</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Property timezone *</label>
+                <select value={propertyTimezone} onChange={(e) => setPropertyTimezone(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white">
+                  <option value="Asia/Manila">Philippines (Asia/Manila)</option>
+                  <option value="Asia/Singapore">Singapore (Asia/Singapore)</option>
+                  <option value="Asia/Tokyo">Japan (Asia/Tokyo)</option>
+                  <option value="UTC">UTC</option>
+                  <option value="America/Los_Angeles">US Pacific (America/Los_Angeles)</option>
+                  <option value="America/New_York">US Eastern (America/New_York)</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 pt-5">
+                <input type="checkbox" checked={petsAllowed} onChange={(e) => setPetsAllowed(e.target.checked)} /> Pets allowed
+              </label>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Lease renewal window (days before lease end)</label>
+                <input type="number" min="0" max="365" value={renewalWindowDays} onChange={(e) => setRenewalWindowDays(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white" />
+                <p className="mt-1 text-[11px] text-slate-500">Tenants can request an extension only after this window opens.</p>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={parkingAvailable} onChange={(e) => setParkingAvailable(e.target.checked)} /> Parking available
+              </label>
+            </div>
+
+            <details className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">Access details and property rules</summary>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <input maxLength={120} value={gateCode} onChange={(e) => setGateCode(e.target.value)} placeholder="Gate / front code" aria-label="Gate or front code" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white" />
+                <input maxLength={120} value={wifiSsid} onChange={(e) => setWifiSsid(e.target.value)} placeholder="Wi-Fi network name" aria-label="Wi-Fi network name" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white" />
+                <input maxLength={120} value={wifiPassword} onChange={(e) => setWifiPassword(e.target.value)} placeholder="Wi-Fi password" aria-label="Wi-Fi password" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white col-span-2" />
+                <textarea maxLength={15030} value={buildingRulesText} onChange={(e) => setBuildingRulesText(e.target.value)} placeholder="Rules and policies (one per line, up to 30)" aria-label="Rules and policies" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white col-span-2 min-h-20" />
+              </div>
+            </details>
+
+            <div className="pt-3 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn btn-secondary text-xs border"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="btn btn-primary text-xs font-grotesk flex items-center gap-1.5 active:scale-95"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span>{isSubmitting ? 'Saving Property...' : 'Save Property'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ──── TAB 2: CREATE UNIT ──── */}
+        {activeTab === 'unit' && (
+          <form onSubmit={handleCreateUnit} className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Select Property *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('property')}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Add new property
+                </button>
+              </div>
+              <div className="relative">
+                <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+                <select
+                  value={selectedPropertyId}
+                  onChange={(e) => { setSelectedPropertyId(e.target.value); setErrors((prev) => ({ ...prev, selectedPropertyId: '' })); }}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {properties.map((p) => {
+                    const pId = p.id || p._id;
+                    return (
+                      <option key={pId} value={pId}>
+                        {p.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {errors.selectedPropertyId && (
+                <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.selectedPropertyId}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Unit Label / Name *
+                </label>
+                <div className="relative">
+                  <Home className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={unitLabel}
+                    onChange={(e) => { setUnitLabel(e.target.value); setErrors((prev) => ({ ...prev, unitLabel: '' })); }}
+                    placeholder="e.g. Unit 24B or Suite 101"
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                {errors.unitLabel && (
+                  <p className="text-xs text-rose-500 mt-1">{errors.unitLabel}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Monthly Rent (₱) *
+                </label>
+                <div className="relative">
+                  <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={monthlyRent}
+                    onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                    onChange={(e) => {
+                      const clean = onlyDecimal(e.target.value);
+                      setMonthlyRent(clean);
+                      setErrors((prev) => ({ ...prev, monthlyRent: '' }));
+                    }}
+                    placeholder="e.g. 2800"
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                {errors.monthlyRent && (
+                  <p className="text-xs text-rose-500 mt-1">{errors.monthlyRent}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-3">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <input type="checkbox" checked={hasParking} onChange={(e) => setHasParking(e.target.checked)} /> Assign parking space
+              </label>
+              {hasParking && <div className="grid grid-cols-2 gap-3">
+                <input maxLength={80} value={parkingSpot} onChange={(e) => setParkingSpot(e.target.value)} placeholder="Parking bay / slot" aria-label="Parking bay or slot" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white" />
+                <input value={parkingFee} onKeyDown={(e) => handleNumericKeyDown(e, true)} onChange={(e) => setParkingFee(onlyDecimal(e.target.value))} placeholder="Monthly fee (₱)" aria-label="Monthly parking fee in pesos" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white" />
+              </div>}
+            </div>
+
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Pet policy for this unit
+              <select value={unitPetPolicy} onChange={(event) => setUnitPetPolicy(event.target.value)} className="mt-1 w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white">
+                <option value="inherit">Use property policy</option><option value="allowed">Pets allowed</option><option value="not-allowed">No pets</option>
+              </select>
+            </label>
+
+            <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">Utility billing</summary>
+              <p className="mt-2 text-[11px] text-slate-500">Separate meter bills are paid outside rent. Shared meter amounts are included in the monthly rent invoice.</p>
+              <div className="mt-3 space-y-2">{utilityBilling.map((bill, index) => <div key={bill.utilityType} className="grid grid-cols-[90px_1fr_100px] items-center gap-2"><span className="text-xs capitalize">{bill.utilityType}</span><select value={bill.billingMode} onChange={(event) => setUtilityBilling((current) => current.map((entry, i) => i === index ? { ...entry, billingMode: event.target.value } : entry))} className="rounded-lg border bg-transparent px-2 py-2 text-xs"><option value="separate_meter">Separate meter</option><option value="shared_meter">Shared meter</option></select><input aria-label={`${bill.utilityType} shared monthly amount`} type="number" min="0" step="0.01" disabled={bill.billingMode !== 'shared_meter'} value={bill.monthlyShare} onChange={(event) => setUtilityBilling((current) => current.map((entry, i) => i === index ? { ...entry, monthlyShare: event.target.value } : entry))} placeholder="₱ share" className="w-full rounded-lg border bg-transparent px-2 py-2 text-xs disabled:opacity-40" /></div>)}</div>
+            </details>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Bedrooms
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={bedrooms}
+                  onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                  onChange={(e) => setBedrooms(onlyDigits(e.target.value))}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Bathrooms
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={bathrooms}
+                  onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                  onChange={(e) => setBathrooms(onlyDecimal(e.target.value))}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Sq Ft
+                </label>
+                <div className="relative">
+                  <Maximize2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={sqft}
+                    onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                    onChange={(e) => setSqft(onlyDigits(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/80 rounded-xl pl-8 pr-2 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn btn-secondary text-xs border"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="btn btn-primary text-xs font-grotesk flex items-center gap-1.5 active:scale-95"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span>{isSubmitting ? 'Saving Unit...' : 'Save Unit'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+      </div>
+    </div>
+  );
+};

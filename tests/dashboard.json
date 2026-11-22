@@ -1,0 +1,264 @@
+{
+  "info": {
+    "name": "Dashboard Module",
+    "description": "Test collection for landlord and tenant dashboard endpoints.\nIncludes portfolio KPI metrics, summary aggregation, and role-based access control.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "landlord_token", "value": "", "type": "string" },
+    { "key": "tenant_token", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth – Login as Landlord",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const token = res.token || (res.data && res.data.token);",
+              "if (token) {",
+              "  pm.collectionVariables.set('landlord_token', token);",
+              "  console.log('Landlord token saved.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"landlord@jptl.dev\",\n  \"password\": \"Password123!\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Auth – Login as Tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const token = res.token || (res.data && res.data.token);",
+              "if (token) {",
+              "  pm.collectionVariables.set('tenant_token', token);",
+              "  console.log('Tenant token saved.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"sophia@jptl.dev\",\n  \"password\": \"Password123!\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Landlord – Full Dashboard",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Returns success true and dashboard data', () => {",
+              "  pm.expect(res.success).to.be.true;",
+              "  pm.expect(res.data).to.be.ok;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/dash",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "dash"]
+        }
+      }
+    },
+    {
+      "name": "Landlord – KPI Snapshot",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('KPI snapshot returned', () => {",
+              "  pm.expect(res.success).to.be.true;",
+              "  pm.expect(res.data).to.be.ok;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/dash/kpi",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "dash", "kpi"]
+        }
+      }
+    },
+    {
+      "name": "Tenant – Full Dashboard",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Tenant dashboard data returned', () => {",
+              "  pm.expect(res.success).to.be.true;",
+              "  pm.expect(res.data).to.be.ok;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/tenant/dash",
+          "host": ["{{base_url}}"],
+          "path": ["api", "tenant", "dash"]
+        }
+      }
+    },
+    {
+      "name": "Tenant – KPI Snapshot",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Tenant KPI snapshot returned', () => {",
+              "  pm.expect(res.success).to.be.true;",
+              "  pm.expect(res.data).to.be.ok;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/tenant/dash/kpi",
+          "host": ["{{base_url}}"],
+          "path": ["api", "tenant", "dash", "kpi"]
+        }
+      }
+    },
+    {
+      "name": "Guard Test – No Token (expect 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/dash",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "dash"]
+        }
+      }
+    },
+    {
+      "name": "Guard Test – Tenant hits Landlord route (expect 403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 403 Forbidden', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/dash",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "dash"]
+        }
+      }
+    },
+    {
+      "name": "Guard Test – Landlord hits Tenant route (expect 403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 403 Forbidden', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/tenant/dash",
+          "host": ["{{base_url}}"],
+          "path": ["api", "tenant", "dash"]
+        }
+      }
+    }
+  ]
+}

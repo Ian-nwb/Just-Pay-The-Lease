@@ -1,0 +1,1740 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Building2, UserPlus, Users, Search, Home, LogOut, ShieldCheck, ArrowUpRight,
+  Sun, Moon, Megaphone, Wrench, DollarSign, X, Bell, ArrowRight,
+  TrendingUp, CheckCircle2, Clock, AlertCircle, Trash2, Layers, MapPin, Key, Camera, Eye
+} from 'lucide-react';
+import { PropertyDetailsModal } from '../components/dashboard/PropertyDetailsModal';
+import { ReportsTab } from '../components/dashboard/ReportsTab';
+import { useTheme } from '../hooks/useTheme';
+import {
+  MOCK_PROPERTIES,
+  MOCK_UNITS as INITIAL_UNITS,
+  MOCK_TENANTS as INITIAL_TENANTS,
+  MOCK_TICKETS as INITIAL_TICKETS,
+  MOCK_PAYMENTS as INITIAL_PAYMENTS,
+  MOCK_DOCUMENTS
+} from '../data/mockData';
+import { AddTenantModal } from '../components/dashboard/AddTenantModal';
+import { AssignTenantModal } from '../components/dashboard/AssignTenantModal';
+import { UnitDetailModal } from '../components/dashboard/UnitDetailModal';
+import { KpiMetricsSection } from '../components/dashboard/KpiMetricsSection';
+import { TicketsTab } from '../components/dashboard/TicketsTab';
+import { LandlordPaymentsPage } from '../components/dashboard/LandlordPaymentsPage';
+import { AnnouncementsTab } from '../components/dashboard/AnnouncementsTab';
+import { SectionDivider } from '../components/dashboard/SectionDivider';
+import { CommandPaletteModal } from '../components/dashboard/CommandPaletteModal';
+import { NewTicketModal } from '../components/dashboard/NewTicketModal';
+import { NewAnnouncementModal } from '../components/dashboard/NewAnnouncementModal';
+import { DashboardSidebar } from '../components/dashboard/DashboardSidebar';
+import { RightNotificationSidebar } from '../components/dashboard/RightNotificationSidebar';
+import { LandlordSettingsTab } from '../components/dashboard/LandlordSettingsTab';
+import { LandlordDocumentsTab } from '../components/dashboard/LandlordDocumentsTab';
+import { LeaseExtensionsTab } from '../components/dashboard/LeaseExtensionsTab';
+import { EvictionNoticesTab } from '../components/dashboard/EvictionNoticesTab';
+import { StaffManagementTab } from '../components/dashboard/StaffManagementTab';
+import { InventoryTab } from '../components/dashboard/InventoryTab';
+import { WorkspaceMessagesTab } from '../components/common/WorkspaceMessagesTab';
+import { DeletePropertyModal } from '../components/dashboard/DeletePropertyModal';
+import { AddPropertyOrUnitModal } from '../components/dashboard/AddPropertyOrUnitModal';
+import { MobileNavBar } from '../components/common/MobileNavBar';
+import { MobileNavDrawer } from '../components/common/MobileNavDrawer';
+import { ConfirmationModal } from '../components/common/ConfirmationModal';
+import { LayoutDashboard, FileCheck, Settings, CalendarClock, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { landlordApi } from '../services/api';
+import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
+
+const LANDLORD_VIEW_ROUTES = {
+  overview: '/dashboard',
+  announcements: '/dashboard-announcements',
+  payments: '/dashboard-payments',
+  tickets: '/dashboard-tickets',
+  units: '/dashboard-units',
+  tenants: '/dashboard-tenants',
+  documents: '/dashboard-documents',
+  reports: '/dashboard-reports',
+  settings: '/dashboard-settings',
+  'lease-extensions': '/dashboard-lease-extensions',
+  'eviction-notices': '/dashboard-eviction-notices',
+  staff: '/dashboard-staff',
+  inventory: '/dashboard-inventory',
+  messages: '/dashboard-messages',
+};
+
+function getViewFromPath(pathname) {
+  const clean = (pathname || '').toLowerCase().split('?')[0].replace(/\/$/, '');
+  if (clean === '/dashboard-announcements' || clean === '/dashboard/announcements' || clean === '/landlord-announcements' || clean === '/landlord/announcements') return 'announcements';
+  if (clean === '/dashboard-payments' || clean === '/dashboard/payments' || clean === '/landlord-payments' || clean === '/landlord/payments' || clean === '/dashboard-rentroll' || clean === '/landlord-rentroll') return 'payments';
+  if (clean === '/dashboard-tickets' || clean === '/dashboard/tickets' || clean === '/landlord-tickets' || clean === '/landlord/tickets' || clean === '/dashboard-maintenance' || clean === '/landlord-maintenance') return 'tickets';
+  if (clean === '/dashboard-units' || clean === '/dashboard/units' || clean === '/landlord-units' || clean === '/landlord/units' || clean === '/dashboard-properties' || clean === '/landlord-properties') return 'units';
+  if (clean === '/dashboard-tenants' || clean === '/dashboard/tenants' || clean === '/landlord-tenants' || clean === '/landlord/tenants') return 'tenants';
+  if (clean === '/dashboard-reports' || clean === '/dashboard/reports') return 'reports';
+  if (clean === '/dashboard-documents' || clean === '/dashboard/documents' || clean === '/landlord-documents' || clean === '/landlord/documents') return 'documents';
+  if (clean === '/dashboard-settings' || clean === '/dashboard/settings' || clean === '/landlord-settings' || clean === '/landlord/settings') return 'settings';
+  if (clean === '/dashboard-lease-extensions' || clean === '/landlord-lease-extensions') return 'lease-extensions';
+  if (clean === '/dashboard-eviction-notices' || clean === '/landlord-eviction-notices' || clean === '/dashboard/eviction-notices') return 'eviction-notices';
+  if (clean === '/dashboard-staff' || clean === '/dashboard/staff') return 'staff';
+  if (clean === '/dashboard-inventory' || clean === '/dashboard/inventory') return 'inventory';
+  if (clean === '/dashboard-messages' || clean === '/dashboard/messages') return 'messages';
+  if (clean === '/dashboard-overview' || clean === '/dashboard/overview' || clean === '/landlord-overview' || clean === '/landlord/overview' || clean === '/dashboard' || clean === '/landlord') return 'overview';
+  return 'overview';
+}
+
+function getCachedLandlordSnapshot(userId) {
+  if (!userId) return null;
+  try {
+    const raw = sessionStorage.getItem(`jptl_dash_cache_${userId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export const DashboardPage = ({ currentPath = window.location.pathname, onNavigate = () => { } }) => {
+  const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
+  const userId = user?.id || user?._id;
+  const initialCache = getCachedLandlordSnapshot(userId);
+
+  const [activeView, setActiveView] = useState(() => getViewFromPath(currentPath || window.location.pathname));
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => !initialCache);
+
+  // Sync activeView if browser navigation or URL change occurs
+  useEffect(() => {
+    const viewFromUrl = getViewFromPath(window.location.pathname);
+    if (viewFromUrl && viewFromUrl !== activeView) {
+      setActiveView(viewFromUrl);
+    }
+  }, [currentPath]);
+
+  const handleViewChange = (view) => {
+    setActiveView(view);
+    setSearchQuery('');
+    setFilterStatus('all');
+    const targetUrl = LANDLORD_VIEW_ROUTES[view] || '/dashboard';
+    if (window.location.pathname !== targetUrl) {
+      onNavigate(targetUrl);
+    }
+  };
+
+  const [properties, setProperties] = useState(() => {
+    if (initialCache?.properties?.length) return initialCache.properties;
+    try {
+      const savedProps = sessionStorage.getItem('jptl_custom_properties');
+      if (savedProps) {
+        const parsed = JSON.parse(savedProps);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
+  const [units, setUnits] = useState(() => {
+    if (initialCache?.units?.length) return initialCache.units;
+    try {
+      const savedUnits = sessionStorage.getItem('jptl_custom_units');
+      if (savedUnits) {
+        const parsed = JSON.parse(savedUnits);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
+  const [tenants, setTenants] = useState(() => initialCache?.tenants || []);
+  const [reviewingTenantId, setReviewingTenantId] = useState(null);
+  const [tickets, setTickets] = useState(() => initialCache?.tickets || []);
+  const [payments, setPayments] = useState(() => initialCache?.payments || []);
+  const [documents, setDocuments] = useState(() => initialCache?.documents || []);
+
+  const [announcements, setAnnouncements] = useState(() => initialCache?.announcements || []);
+  const [announcement, setAnnouncement] = useState(() => initialCache?.announcement || null);
+  const [broadcastDismissed, setBroadcastDismissed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Only reflect a review decision after the server has recorded it.
+  const handleUpdateDocumentStatus = async (docId, status, rejectionReason) => {
+    const response = await landlordApi.updateDocumentStatus(docId, status, rejectionReason);
+    const saved = response?.document || response?.data?.document || {};
+    setDocuments((prev) => prev.map((d) =>
+      String(d.id || d._id) === String(docId) ? {
+        ...d,
+        status: saved.status || status,
+        rejectionReason: saved.rejectionReason || '',
+        verifiedAt: saved.verifiedAt || d.verifiedAt,
+        reviewedBy: saved.reviewedBy || d.reviewedBy,
+        reviewerName: saved.reviewerName || d.reviewerName || '',
+      } : d
+    ));
+  };
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  // Modals & Drawers
+  const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
+  const [addTenantPropertyId, setAddTenantPropertyId] = useState('');
+  const [addTenantUnitId, setAddTenantUnitId] = useState('');
+  const [selectedUnitForDetail, setSelectedUnitForDetail] = useState(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
+  const [isNewAnnouncementOpen, setIsNewAnnouncementOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
+  // Property / Unit Sub-Tab & Delete Property State
+  const [propSubTab, setPropSubTab] = useState('properties'); // 'properties' | 'units'
+  const [selectedPropertyForDelete, setSelectedPropertyForDelete] = useState(null);
+  const [viewingPropertyId, setViewingPropertyId] = useState(null);
+  const [imageUploadPropertyId, setImageUploadPropertyId] = useState(null);
+  const [imageUploadingId, setImageUploadingId] = useState(null);
+  const propertyImageInputRef = React.useRef(null);
+
+  const chooseNewPropertyImage = (propertyId) => {
+    setImageUploadPropertyId(propertyId);
+    propertyImageInputRef.current?.click();
+  };
+
+  const handlePropertyImageSelected = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const propertyId = imageUploadPropertyId;
+    if (!file || !propertyId) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { window.alert('Choose a JPG, PNG, or WebP image.'); return; }
+    if (file.size > 5 * 1024 * 1024) { window.alert('Images must be 5 MB or smaller.'); return; }
+    setImageUploadingId(propertyId);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await landlordApi.updatePropertyImage(propertyId, formData);
+      const image = res?.data?.image;
+      if (image) setProperties((prev) => prev.map((p) => (String(p.id || p._id) === String(propertyId) ? { ...p, image } : p)));
+    } catch (error) {
+      window.alert(error.message || 'Could not update the property image.');
+    } finally {
+      setImageUploadingId(null);
+    }
+  };
+  const [toastNotification, setToastNotification] = useState(null);
+
+  // Property / Unit Creation Modal
+  const [isAddPropUnitOpen, setIsAddPropUnitOpen] = useState(false);
+  const [addPropUnitTab, setAddPropUnitTab] = useState('unit');
+  const [addPropPreselectedPropertyId, setAddPropPreselectedPropertyId] = useState(null);
+
+  // Tenant Assignment Modal State
+  const [assigningTenant, setAssigningTenant] = useState(null);
+
+  // Lease Duration Helper
+  const getLeaseDuration = (start, end) => {
+    if (!start || !end) return null;
+    const s = new Date(start);
+    const e = new Date(end);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return null;
+    const diffTime = e.getTime() - s.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return '0 Days';
+    const diffMonths = Math.round(diffDays / 30.44);
+    if (diffMonths >= 12) {
+      const years = (diffMonths / 12).toFixed(diffMonths % 12 === 0 ? 0 : 1);
+      return `${years} ${years === '1' ? 'Year' : 'Years'} (${diffMonths} mo)`;
+    }
+    return `${diffMonths} ${diffMonths === 1 ? 'Month' : 'Months'}`;
+  };
+
+  // Lease Expiration Helper
+  const getLeaseExpirationInfo = (end) => {
+    if (!end) return null;
+    const e = new Date(end);
+    if (isNaN(e.getTime())) return null;
+    const now = new Date();
+    const diffDays = Math.ceil((e.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const formattedDate = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (diffDays < 0) {
+      return {
+        formattedDate,
+        badgeText: `Expired ${Math.abs(diffDays)}d ago`,
+        statusClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+      };
+    }
+    if (diffDays <= 30) {
+      return {
+        formattedDate,
+        badgeText: `Expires in ${diffDays}d`,
+        statusClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+      };
+    }
+    return {
+      formattedDate,
+      badgeText: `${diffDays} days left`,
+      statusClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+    };
+  };
+
+  const handleDashboardPropertyCreated = async (newProp) => {
+    try {
+      const res = await landlordApi.createProperty({
+        name: newProp.name,
+        address: newProp.address,
+        city: newProp.city,
+        category: newProp.category,
+        image: newProp.image,
+        timezone: newProp.timezone,
+        petsAllowed: newProp.petsAllowed,
+        parkingAvailable: newProp.parkingAvailable,
+        accessCodes: newProp.accessCodes,
+        buildingRules: newProp.buildingRules,
+      });
+      const created = res.data || newProp;
+      const finalProp = { ...created, id: created._id || created.id, units: [] };
+      setProperties((prev) => [finalProp, ...prev]);
+      setToastNotification(`Property "${finalProp.name}" created successfully!`);
+      setTimeout(() => setToastNotification(null), 4000);
+      return finalProp;
+    } catch (err) {
+      console.warn('Server createProperty fallback to local:', err.message);
+      const fallback = { ...newProp, id: newProp.id || `prop-custom-${Date.now()}`, units: [] };
+      setProperties((prev) => {
+        const updated = [...prev, fallback];
+        try {
+          const customOnly = updated.filter((p) => String(p.id).startsWith('prop-custom-'));
+          sessionStorage.setItem('jptl_custom_properties', JSON.stringify(customOnly));
+        } catch (e) {
+          console.error(e);
+        }
+        return updated;
+      });
+      setToastNotification(`Property "${newProp.name}" created!`);
+      setTimeout(() => setToastNotification(null), 4000);
+      return fallback;
+    }
+  };
+
+  const handleDashboardUnitCreated = async (newUnit) => {
+    try {
+      const targetPropId = newUnit.propertyId || newUnit.property;
+      const isMongoId = /^[0-9a-fA-F]{24}$/.test(String(targetPropId));
+      if (!isMongoId) {
+        console.warn('Property ID is not a MongoDB ObjectId, creating unit locally:', targetPropId);
+        const fallbackUnit = { ...newUnit, id: newUnit.id || `unit-custom-${Date.now()}` };
+        setUnits((prev) => [fallbackUnit, ...prev]);
+        setToastNotification(`Unit "${fallbackUnit.label}" created locally.`);
+        setTimeout(() => setToastNotification(null), 4000);
+        return fallbackUnit;
+      }
+      const res = await landlordApi.createUnit(targetPropId, {
+        label: newUnit.label,
+        monthlyRent: newUnit.monthlyRent,
+        bedrooms: newUnit.bedrooms,
+        bathrooms: newUnit.bathrooms,
+        sqft: newUnit.sqft,
+        hasParking: newUnit.hasParking,
+        parkingSpot: newUnit.parkingSpot,
+        parkingFee: newUnit.parkingFee,
+      });
+      const created = res.data || newUnit;
+      const targetProp = properties.find((p) => (p.id === targetPropId || p._id === targetPropId));
+      const finalUnit = {
+        ...created,
+        id: created._id || created.id,
+        propertyId: targetPropId,
+        propertyName: targetProp?.name || 'Property',
+      };
+      setUnits((prev) => [finalUnit, ...prev]);
+      setToastNotification(`Unit "${finalUnit.label}" created successfully!`);
+      setTimeout(() => setToastNotification(null), 4000);
+      return finalUnit;
+    } catch (err) {
+      console.warn('Server createUnit fallback to local:', err.message);
+      setUnits((prev) => {
+        const updated = [...prev, newUnit];
+        try {
+          const customOnly = updated.filter((u) => String(u.id).startsWith('unit-custom-'));
+          sessionStorage.setItem('jptl_custom_units', JSON.stringify(customOnly));
+        } catch (e) {
+          console.error(e);
+        }
+        return updated;
+      });
+      setToastNotification(`Unit "${newUnit.label}" created!`);
+      setTimeout(() => setToastNotification(null), 4000);
+    }
+  };
+
+  const handleDeleteProperty = async (propertyId) => {
+    const propToDelete = properties.find((p) => p.id === propertyId || p._id === propertyId);
+    const propName = propToDelete ? propToDelete.name : 'Property';
+
+    try {
+      await landlordApi.deleteProperty(propertyId, true);
+    } catch (err) {
+      console.warn('Server deleteProperty notice:', err.message);
+    }
+
+    // Remove property
+    setProperties((prev) => prev.filter((p) => p.id !== propertyId && p._id !== propertyId));
+
+    // Remove vacant units belonging to this property
+    setUnits((prev) => prev.filter((u) => u.propertyId !== propertyId && u.property !== propertyId));
+
+    setToastNotification(`Property "${propName}" and its vacant units were deleted.`);
+    setTimeout(() => setToastNotification(null), 4500);
+  };
+
+  const handleUpdateTicketStatus = async (ticketId, newStatus, updatedTicket) => {
+    try {
+      await landlordApi.updateTicketStatus(ticketId, newStatus);
+    } catch (err) {
+      console.warn('Server updateTicketStatus notice:', err.message);
+    }
+    setTickets((prev) =>
+      prev.map((t) => ((t.id === ticketId || t._id === ticketId) ? (updatedTicket || { ...t, status: newStatus }) : t))
+    );
+    setToastNotification(`Ticket status updated to "${newStatus.replace('_', ' ')}"`);
+    setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const handleDeleteTicket = async (ticketId) => {
+    try {
+      await landlordApi.deleteTicket(ticketId);
+    } catch (err) {
+      console.warn('Server deleteTicket notice:', err.message);
+    }
+    setTickets((prev) => prev.filter((t) => t.id !== ticketId && t._id !== ticketId));
+    setToastNotification('Maintenance ticket deleted successfully.');
+    setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const handleAssignTechnician = async (ticketId, techData) => {
+    try {
+      await landlordApi.assignTechnician(ticketId, techData);
+    } catch (err) {
+      console.warn('Server assignTechnician notice:', err.message);
+    }
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticketId || t._id === ticketId
+          ? {
+            ...t,
+            status: t.status === 'submitted' ? 'in_progress' : t.status,
+            assignedTechnician: {
+              ...(t.assignedTechnician || {}),
+              ...techData,
+            },
+            assignedStaff: techData.assignedStaff || t.assignedStaff || null,
+          }
+          : t
+      )
+    );
+    setToastNotification(`Technician ${techData.name} assigned to ticket.`);
+    setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const handleDeleteAnnouncement = async (announcementId) => {
+    try {
+      await landlordApi.deleteAnnouncement(announcementId);
+    } catch (err) {
+      console.warn('Server deleteAnnouncement notice:', err.message);
+    }
+    setAnnouncements((prev) => prev.filter((a) => a.id !== announcementId && a._id !== announcementId));
+    if (announcement && (announcement.id === announcementId || announcement._id === announcementId)) {
+      setAnnouncement(null);
+    }
+    setToastNotification('Announcement removed.');
+    setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      onNavigate('/login');
+    } catch (e) {
+      console.error('Logout error:', e);
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutConfirm(false);
+    }
+  };
+
+  // ⌘K shortcut
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Load live data from server
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadLiveDashboardData() {
+      try {
+        // ── PRIMARY: singular consolidated endpoint (1 HTTP call) ──
+        const res = await landlordApi.getDashInit();
+        if (!isMounted) return;
+
+        const batch = res?.data; // { dash, properties, tickets, tenants, documents, rentroll, announcements }
+
+        if (batch?.properties?.ok) {
+          const pVal = batch.properties.data;
+          const liveProps = Array.isArray(pVal?.data) ? pVal.data : (Array.isArray(pVal) ? pVal : []);
+          setProperties(liveProps);
+          const liveUnits = liveProps.flatMap((p) =>
+            (p.units || []).map((u) => ({
+              ...u,
+              id: u._id || u.id,
+              propertyId: p._id || p.id,
+              propertyName: p.name,
+              propertyAddress: p.address,
+            }))
+          );
+          setUnits(liveUnits);
+        }
+
+        if (batch?.tickets?.ok) {
+          const tVal = batch.tickets.data;
+          const tList = tVal?.tickets || tVal?.data || (Array.isArray(tVal) ? tVal : []);
+          setTickets(Array.isArray(tList) ? tList : []);
+        }
+
+        if (batch?.tenants?.ok) {
+          const tData = batch.tenants.data;
+          const serverTenants = Array.isArray(tData?.data)
+            ? tData.data
+            : Array.isArray(tData?.tenants)
+            ? tData.tenants
+            : (Array.isArray(tData) ? tData : []);
+          const map = new Map();
+          const emailSet = new Set();
+          serverTenants.forEach((t) => {
+            const id = String(t.id || t._id || t.email);
+            map.set(id, { ...t, id: t.id || t._id });
+            if (t.email) emailSet.add(t.email.toLowerCase().trim());
+          });
+          try {
+            const savedTenants = sessionStorage.getItem('jptl_onboarding_tenants');
+            if (savedTenants) {
+              const parsed = JSON.parse(savedTenants);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((t) => {
+                  const id = String(t.id || t._id || t.email);
+                  const email = (t.email || '').toLowerCase().trim();
+                  if (id && !map.has(id) && (!email || !emailSet.has(email))) {
+                    map.set(id, t);
+                    if (email) emailSet.add(email);
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Failed to load session data', e);
+          }
+          setTenants(Array.from(map.values()));
+        }
+
+        if (batch?.documents?.ok) {
+          const dVal = batch.documents.data;
+          const dList = dVal?.documents || dVal?.data || (Array.isArray(dVal) ? dVal : []);
+          setDocuments(Array.isArray(dList) ? dList : []);
+        }
+
+        if (batch?.rentroll?.ok) {
+          const rVal = batch.rentroll.data;
+          const rList = Array.isArray(rVal?.data)
+            ? rVal.data
+            : Array.isArray(rVal?.payments)
+            ? rVal.payments
+            : (Array.isArray(rVal) ? rVal : []);
+          setPayments(rList);
+        }
+
+        if (batch?.announcements?.ok) {
+          const aVal = batch.announcements.data;
+          const ancList = Array.isArray(aVal?.data)
+            ? aVal.data
+            : Array.isArray(aVal?.announcements)
+            ? aVal.announcements
+            : (Array.isArray(aVal) ? aVal : []);
+          setAnnouncements(ancList);
+          const pinned = ancList.find((a) => a.isPinned) || ancList[0];
+          if (pinned) {
+            setAnnouncement({
+              subject: pinned.title,
+              body: pinned.content || pinned.body,
+            });
+          } else {
+            setAnnouncement(null);
+          }
+        } else if (batch?.dash?.ok && batch.dash.data?.data?.pinnedAnnouncement) {
+          const p = batch.dash.data.data.pinnedAnnouncement;
+          setAnnouncement({
+            subject: p.title,
+            body: p.content || p.body,
+          });
+        }
+
+        // Cache fresh snapshot to sessionStorage for instant 0ms mount on next visit
+        if (userId && batch) {
+          try {
+            const pVal = batch.properties?.data;
+            const liveProps = Array.isArray(pVal?.data) ? pVal.data : (Array.isArray(pVal) ? pVal : []);
+            const liveUnits = liveProps.flatMap((p) =>
+              (p.units || []).map((u) => ({
+                ...u,
+                id: u._id || u.id,
+                propertyId: p._id || p.id,
+                propertyName: p.name,
+                propertyAddress: p.address,
+              }))
+            );
+            const tData = batch.tenants?.data;
+            const liveTenants = Array.isArray(tData?.data) ? tData.data : (Array.isArray(tData?.tenants) ? tData.tenants : (Array.isArray(tData) ? tData : []));
+            const tVal = batch.tickets?.data;
+            const liveTickets = tVal?.tickets || tVal?.data || (Array.isArray(tVal) ? tVal : []);
+            const dVal = batch.documents?.data;
+            const liveDocs = dVal?.documents || dVal?.data || (Array.isArray(dVal) ? dVal : []);
+            const rVal = batch.rentroll?.data;
+            const livePayments = Array.isArray(rVal?.data) ? rVal.data : (Array.isArray(rVal?.payments) ? rVal.payments : (Array.isArray(rVal) ? rVal : []));
+            const aVal = batch.announcements?.data;
+            const liveAncs = Array.isArray(aVal?.data) ? aVal.data : (Array.isArray(aVal?.announcements) ? aVal.announcements : (Array.isArray(aVal) ? aVal : []));
+
+            sessionStorage.setItem(`jptl_dash_cache_${userId}`, JSON.stringify({
+              properties: liveProps,
+              units: liveUnits,
+              tenants: liveTenants,
+              tickets: liveTickets,
+              documents: liveDocs,
+              payments: livePayments,
+              announcements: liveAncs,
+            }));
+          } catch (e) {
+            // Ignore quota errors
+          }
+        }
+      } catch (err) {
+        console.warn('Singular /init failed, falling back to concurrent fetch:', err.message);
+        try {
+          // ── FALLBACK: worker-based multi-fetch ──
+          const batch = await landlordApi.getConcurrentDashboardData();
+
+          if (!isMounted) return;
+
+          if (batch?.properties?.ok) {
+            const pVal = batch.properties.data;
+            const liveProps = Array.isArray(pVal?.data) ? pVal.data : (Array.isArray(pVal) ? pVal : []);
+            setProperties(liveProps);
+            const liveUnits = liveProps.flatMap((p) =>
+              (p.units || []).map((u) => ({
+                ...u,
+                id: u._id || u.id,
+                propertyId: p._id || p.id,
+                propertyName: p.name,
+                propertyAddress: p.address,
+              }))
+            );
+            setUnits(liveUnits);
+          }
+
+          if (batch?.tickets?.ok) {
+            const tVal = batch.tickets.data;
+            const tList = tVal?.tickets || tVal?.data || (Array.isArray(tVal) ? tVal : []);
+            setTickets(Array.isArray(tList) ? tList : []);
+          }
+
+          if (batch?.tenants?.ok) {
+            const tData = batch.tenants.data;
+            const serverTenants = Array.isArray(tData?.data)
+              ? tData.data
+              : Array.isArray(tData?.tenants)
+              ? tData.tenants
+              : (Array.isArray(tData) ? tData : []);
+            const map = new Map();
+            const emailSet = new Set();
+            serverTenants.forEach((t) => {
+              const id = String(t.id || t._id || t.email);
+              map.set(id, { ...t, id: t.id || t._id });
+              if (t.email) emailSet.add(t.email.toLowerCase().trim());
+            });
+            setTenants(Array.from(map.values()));
+          }
+
+          if (batch?.documents?.ok) {
+            const dVal = batch.documents.data;
+            const dList = dVal?.documents || dVal?.data || (Array.isArray(dVal) ? dVal : []);
+            setDocuments(Array.isArray(dList) ? dList : []);
+          }
+
+          if (batch?.rentroll?.ok) {
+            const rVal = batch.rentroll.data;
+            const rList = Array.isArray(rVal?.data)
+              ? rVal.data
+              : Array.isArray(rVal?.payments)
+              ? rVal.payments
+              : (Array.isArray(rVal) ? rVal : []);
+            setPayments(rList);
+          }
+
+          if (batch?.announcements?.ok) {
+            const aVal = batch.announcements.data;
+            const ancList = Array.isArray(aVal?.data)
+              ? aVal.data
+              : Array.isArray(aVal?.announcements)
+              ? aVal.announcements
+              : (Array.isArray(aVal) ? aVal : []);
+            setAnnouncements(ancList);
+            const pinned = ancList.find((a) => a.isPinned) || ancList[0];
+            if (pinned) {
+              setAnnouncement({
+                subject: pinned.title,
+                body: pinned.content || pinned.body,
+              });
+            } else {
+              setAnnouncement(null);
+            }
+          } else if (batch?.dash?.ok && batch.dash.data?.data?.pinnedAnnouncement) {
+            const p = batch.dash.data.data.pinnedAnnouncement;
+            setAnnouncement({
+              subject: p.title,
+              body: p.content || p.body,
+            });
+          }
+        } catch (fallbackErr) {
+          console.warn('Dashboard live data fetch fallback:', fallbackErr.message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadLiveDashboardData();
+
+    // Auto-refresh polling every 10s for real-time sync
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadLiveDashboardData();
+      }
+    }, 30000);
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        loadLiveDashboardData();
+      }
+    };
+
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+    };
+  }, []);
+
+  const handleOpenAddTenant = (propertyId = '', unitId = '') => {
+    setAddTenantPropertyId(propertyId);
+    setAddTenantUnitId(unitId);
+    setIsAddTenantOpen(true);
+  };
+
+  const handleTenantAdded = (newTenant) => {
+    setTenants((prev) => [newTenant, ...prev]);
+    if (newTenant.unitId) {
+      setUnits((prev) =>
+        prev.map((u) =>
+          (u.id === newTenant.unitId || u._id === newTenant.unitId)
+            ? { ...u, status: 'occupied', tenantId: newTenant.id, tenantName: newTenant.name, tenantEmail: newTenant.email, leaseStart: newTenant.leaseStart, leaseType: newTenant.leaseType, leaseEnd: newTenant.leaseEnd }
+            : u
+        )
+      );
+    }
+  };
+
+  const handleReviewTenantApproval = async (tenant, decision) => {
+    const tenantId = tenant.id || tenant._id;
+    if (decision === 'approve' && !window.confirm(`Approve ${tenant.name} and email their resident portal credentials?`)) return;
+    if (decision === 'reject' && !window.confirm(`Decline ${tenant.name}'s request? The requested unit will remain available.`)) return;
+    setReviewingTenantId(tenantId);
+    try {
+      const response = await landlordApi.reviewTenantApproval(tenantId, decision);
+      setTenants((current) => current.map((entry) => {
+        if ((entry.id || entry._id) !== tenantId) return entry;
+        if (decision === 'approve') return { ...entry, approvalStatus: 'approved', userStatus: 'active' };
+        return { ...entry, approvalStatus: 'rejected', userStatus: 'suspended', status: 'pre_added', propertyId: null, propertyName: 'Unassigned', property: null, unitId: null, unitLabel: 'Unassigned', monthlyRent: 0, leaseStart: null, leaseEnd: null };
+      }));
+      setToastNotification(response.message || (decision === 'approve' ? 'Tenant approved.' : 'Tenant request declined.'));
+      setTimeout(() => setToastNotification(null), 4000);
+    } catch (requestError) {
+      setToastNotification(requestError.message || `Could not ${decision} tenant request.`);
+      setTimeout(() => setToastNotification(null), 5000);
+    } finally {
+      setReviewingTenantId(null);
+    }
+  };
+
+  const handleTenantAssigned = (updatedTenant) => {
+    setTenants((prev) =>
+      prev.map((t) => ((t.id === updatedTenant.id || t._id === updatedTenant.id || t.email === updatedTenant.email) ? updatedTenant : t))
+    );
+    if (updatedTenant.unitId) {
+      setUnits((prev) =>
+        prev.map((u) => {
+          if (u.id === updatedTenant.unitId || u._id === updatedTenant.unitId) {
+            return {
+              ...u,
+              status: 'occupied',
+              tenantId: updatedTenant.id,
+              tenantName: updatedTenant.name,
+              tenantEmail: updatedTenant.email,
+              leaseStart: updatedTenant.leaseStart,
+              leaseType: updatedTenant.leaseType,
+              leaseEnd: updatedTenant.leaseEnd,
+              monthlyRent: updatedTenant.monthlyRent || u.monthlyRent,
+            };
+          }
+          if (u.tenantId === updatedTenant.id && u.id !== updatedTenant.unitId && u._id !== updatedTenant.unitId) {
+            return { ...u, status: 'vacant', tenantId: null, tenantName: null, tenantEmail: null };
+          }
+          return u;
+        })
+      );
+    }
+    setToastNotification(`${updatedTenant.name} successfully assigned to ${updatedTenant.unitLabel || 'unit'} at ${updatedTenant.propertyName || 'property'}!`);
+    setTimeout(() => setToastNotification(null), 4000);
+  };
+
+  const handleTicketCreated = (newTicket) => {
+    setTickets((prev) => [newTicket, ...prev]);
+  };
+
+  const handleAnnouncementCreated = async (newAnc) => {
+    try {
+      const res = await landlordApi.createAnnouncement({
+        title: newAnc.title,
+        content: newAnc.body,
+        category: newAnc.category,
+        isPinned: newAnc.isPinned,
+      });
+      const created = res.data || newAnc;
+      setAnnouncements((prev) => [created, ...prev]);
+      if (newAnc.isPinned) {
+        setAnnouncement({
+          subject: newAnc.title,
+          body: newAnc.body,
+        });
+        setBroadcastDismissed(false);
+      }
+    } catch (err) {
+      console.warn('Server createAnnouncement notice:', err.message);
+      setAnnouncements((prev) => [newAnc, ...prev]);
+      if (newAnc.isPinned) {
+        setAnnouncement({
+          subject: newAnc.title,
+          body: newAnc.body,
+        });
+        setBroadcastDismissed(false);
+      }
+    }
+  };
+
+  const handleCommandPaletteSelect = (item) => {
+    if (item.type === 'property' || item.type === 'unit') {
+      handleViewChange('units');
+      if (item.type === 'unit') setSelectedUnitForDetail(item.raw);
+    } else if (item.type === 'tenant') {
+      handleViewChange('tenants');
+    } else if (item.type === 'ticket') {
+      handleViewChange('tickets');
+    }
+  };
+
+  const vacantCount = (units || []).filter((u) => u?.status === 'vacant').length;
+  const occupiedCount = (units || []).filter((u) => u?.status === 'occupied').length;
+  const pendingTickets = (tickets || []).filter((t) => t?.status !== 'resolved').length;
+
+  const filteredUnits = (units || []).filter((u) => {
+    const q = (searchQuery || '').toLowerCase();
+    const matchesSearch = (u?.label || '').toLowerCase().includes(q) || (u?.propertyName || '').toLowerCase().includes(q);
+    if (filterStatus === 'vacant') return matchesSearch && u?.status === 'vacant';
+    if (filterStatus === 'occupied') return matchesSearch && u?.status === 'occupied';
+    return matchesSearch;
+  });
+
+  const filteredTenants = (tenants || []).filter((t) => {
+    const q = (searchQuery || '').toLowerCase();
+    const matchesSearch = (t?.name || '').toLowerCase().includes(q) || (t?.email || '').toLowerCase().includes(q) || (t?.propertyName || '').toLowerCase().includes(q);
+    if (filterStatus === 'pre_added') return matchesSearch && t?.status === 'pre_added';
+    if (filterStatus === 'occupied') return matchesSearch && t?.status === 'active';
+    return matchesSearch;
+  });
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  return (
+    <div className="min-h-screen bg-app dark:bg-surface-sunken text-slate-900 dark:text-slate-100 font-sans flex selection:bg-indigo-600/30 selection:text-indigo-300 transition-colors duration-300">
+
+      {/* ─── LEFT SIDEBAR NAV ─── */}
+      <DashboardSidebar
+        activeView={activeView}
+        onChangeView={handleViewChange}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((p) => !p)}
+        onLogout={handleLogout}
+        onNavigate={onNavigate}
+        pendingDocCount={documents.filter((d) => d.status === 'Pending Review').length}
+      />
+
+      {/* ─── MAIN CENTER CONTENT AREA ─── */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+
+        {/* ─── TOP BAR ─── */}
+        <header className="sticky top-0 z-30 apple-glass border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 sm:py-3">
+          <div className="flex items-center justify-between gap-3">
+
+            {/* Mobile Brand Identity */}
+            <div className="flex items-center gap-2 md:hidden">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/30 shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-grotesk font-extrabold text-sm tracking-tight text-slate-900 dark:text-white block leading-tight">
+                  JPTL<span className="text-indigo-600 dark:text-indigo-400">.SYS</span>
+                </span>
+                <span className="text-xs font-mono text-slate-400 dark:text-slate-500 block leading-none">
+                  Console
+                </span>
+              </div>
+            </div>
+
+            {/* Desktop Search (⌘K) */}
+            <div className="hidden md:flex items-center gap-3 w-full max-w-md">
+              <button
+                onClick={() => setIsCommandPaletteOpen(true)}
+                className="flex items-center w-full bg-slate-100 dark:bg-surface border border-slate-200 dark:border-slate-800 rounded-xl pl-3 pr-2 py-2 text-xs text-slate-400 hover:border-indigo-500/50 transition-colors cursor-pointer btn-press"
+              >
+                <Search className="w-3.5 h-3.5 mr-2 shrink-0" />
+                <span className="flex-1 text-left">Search…</span>
+                <span className="font-mono text-xs bg-slate-200 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">Ctrl K</span>
+              </button>
+            </div>
+
+            {/* Right Controls */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Mobile Quick Search Button */}
+              <button
+                onClick={() => setIsCommandPaletteOpen(true)}
+                aria-label="Search"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-surface hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 md:hidden btn-press"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+
+              {/* Notification Bell */}
+              <button
+                onClick={() => setIsNotificationOpen(true)}
+                aria-label="Open notifications"
+                className="relative p-2 rounded-xl bg-slate-100 dark:bg-surface hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 btn-press"
+              >
+                <Bell className="w-4 h-4" />
+                {pendingTickets > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-xs font-bold flex items-center justify-center animate-pulse">
+                    {pendingTickets}
+                  </span>
+                )}
+              </button>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                aria-label="Toggle theme"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-surface hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 btn-press"
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+              </button>
+
+              {/* User Avatar + Name (opens MobileNavDrawer on mobile) */}
+              <button
+                type="button"
+                onClick={() => setIsMobileNavOpen(true)}
+                className="flex items-center gap-2.5 pl-1 sm:pl-2 border-l border-slate-200 dark:border-slate-800 btn-press cursor-pointer"
+                aria-label="Open menu"
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold font-grotesk overflow-hidden shrink-0 shadow-sm">
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user?.firstName || 'User'} className="w-full h-full object-cover" />
+                  ) : (
+                    (user?.firstName?.[0] || 'L') + (user?.lastName?.[0] || '')
+                  )}
+                </div>
+                <div className="text-right hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
+                    {user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Landlord'}
+                  </span>
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                    {user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Landlord'}
+                  </span>
+                </div>
+              </button>
+            </div>
+
+          </div>
+        </header>
+
+        {/* ─── SCROLLABLE MAIN CONTENT ─── */}
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 space-y-5 sm:space-y-6 overflow-y-auto pb-28 md:pb-8">
+
+          {isLoading && properties.length === 0 && units.length === 0 && tickets.length === 0 ? (
+            <DashboardSkeleton />
+          ) : (
+            <div key={activeView} className="view-enter space-y-5 sm:space-y-6">
+              {/* ═══════════════════════════════════════════ */}
+              {/* ─── VIEW 1: OVERVIEW (informational only) ─── */}
+              {/* ═══════════════════════════════════════════ */}
+              {activeView === 'overview' && (
+                <>
+                  {/* Broadcast Banner (dismissible) */}
+                  {announcement && !broadcastDismissed && (
+                    <div className="relative p-4 sm:p-5 rounded-2xl bg-surface border border-slate-800 flex items-start gap-3">
+                      <Megaphone className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                      <div className="flex-1 space-y-0.5">
+                        <span className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400 block font-mono">Workspace Broadcast</span>
+                        <h4 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">{announcement.subject}</h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{announcement.body}</p>
+                      </div>
+                      <button onClick={() => setBroadcastDismissed(true)} className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 btn-press shrink-0" aria-label="Dismiss">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hero Greeting */}
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h1 className="text-2xl sm:text-3xl font-bold font-grotesk tracking-tight text-slate-900 dark:text-white leading-tight break-words">
+                        {greeting}, {user?.firstName || 'Landlord'}
+                      </h1>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your portfolio and work that needs attention.</p>
+                    </div>
+                  </div>
+
+                  {/* KPI Stat Cards (informational — link to sidebar pages) */}
+                  <KpiMetricsSection
+                    units={units}
+                    tenants={tenants}
+                    tickets={tickets}
+                    onAddTenant={() => handleViewChange('units')}
+                    onNavigateTickets={() => handleViewChange('tickets')}
+                  />
+
+                  <SectionDivider label="Recent Activity" />
+
+                  {/* Recent Tickets Preview & Quick Actions */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="top-shade apple-glass rounded-2xl border border-slate-200 dark:border-slate-800/80 overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800/80">
+                        <h2 className="text-sm font-bold font-grotesk text-slate-900 dark:text-white flex items-center gap-2">
+                          <Wrench className="w-4 h-4 text-indigo-500" /> Recent Maintenance Requests
+                        </h2>
+                        <button onClick={() => handleViewChange('tickets')} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 btn-press">
+                          View All <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="divide-y divide-slate-200 dark:divide-slate-800/60">
+                        {tickets.slice(0, 3).map((t) => (
+                          <div key={t.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">{t.id}</span>
+                                <span className="text-xs font-semibold text-slate-900 dark:text-white">{t.title}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{t.propertyName} &bull; {t.unitLabel}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold font-mono border ${t.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                : t.status === 'in_progress' ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+                                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                              }`}>
+                              {t.status.replace('_', ' ')}
+                            </span>
+                          </div>
+                        ))}
+                        {tickets.length === 0 && (
+                          <div className="px-5 py-8 text-center text-xs text-slate-400 font-mono">No recent requests found.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="top-shade apple-glass rounded-2xl border border-slate-200 dark:border-slate-800/80 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800/80">
+                        <h2 className="text-sm font-bold font-grotesk text-slate-900 dark:text-white">Quick Actions</h2>
+                      </div>
+                      <div className="divide-y divide-slate-200 dark:divide-slate-800/60">
+                        <button onClick={() => handleViewChange('units')} className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors text-left btn-press">
+                          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500"><Building2 className="w-4 h-4" /></div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block">Browse Properties</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">View all units and assign tenants</span>
+                          </div>
+                        </button>
+                        <button onClick={() => handleViewChange('tenants')} className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors text-left btn-press">
+                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500"><Users className="w-4 h-4" /></div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block">Manage Tenants</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">View directory and add new tenants</span>
+                          </div>
+                        </button>
+                        <button onClick={() => handleViewChange('announcements')} className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors text-left btn-press">
+                          <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500"><Megaphone className="w-4 h-4" /></div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block">Post Broadcast</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Publish announcements to all tenants</span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ═════════════════════════════════════════ */}
+              {/* ─── VIEW 2: ANNOUNCEMENTS PAGE (dedicated) */}
+              {/* ═════════════════════════════════════════ */}
+              {activeView === 'announcements' && (
+                <AnnouncementsTab
+                  announcements={announcements}
+                  onOpenNewAnnouncement={() => setIsNewAnnouncementOpen(true)}
+                  onDeleteAnnouncement={handleDeleteAnnouncement}
+                />
+              )}
+
+              {/* ═════════════════════════════════════════ */}
+              {/* ─── VIEW 3: PROPERTIES & UNITS (full CRUD) */}
+              {/* ═════════════════════════════════════════ */}
+              {activeView === 'units' && (
+                <div className="space-y-5">
+                  {/* Page Header with Actions */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="text-2xl font-extrabold font-grotesk text-slate-900 dark:text-white">Properties & Units</h1>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Manage your real estate portfolio — {units.length} total units across {properties.length} properties.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => { setAddPropPreselectedPropertyId(null); setAddPropUnitTab('property'); setIsAddPropUnitOpen(true); }}
+                        className="px-4 py-2.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 text-xs font-bold font-grotesk btn-press flex items-center gap-2"
+                      >
+                        <Building2 className="w-4 h-4 text-indigo-500" /> + Add Property / Unit
+                      </button>
+                      <button
+                        onClick={() => handleOpenAddTenant()}
+                        className="btn btn-primary text-xs font-grotesk flex items-center gap-2"
+                      >
+                        <UserPlus className="w-4 h-4" /> + Add Tenant
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sub-view Segmented Switcher */}
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-200/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                      <button
+                        onClick={() => setPropSubTab('properties')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold font-grotesk flex items-center gap-2 transition-all ${propSubTab === 'properties'
+                            ? 'bg-surface text-ink-strong shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        Properties ({properties.length})
+                      </button>
+                      <button
+                        onClick={() => setPropSubTab('units')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold font-grotesk flex items-center gap-2 transition-all ${propSubTab === 'units'
+                            ? 'bg-surface text-ink-strong shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        All Units ({units.length})
+                      </button>
+                    </div>
+
+                    {propSubTab === 'units' && (
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-64">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search units…"
+                            className="w-full bg-white dark:bg-surface border border-slate-300 dark:border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <select
+                          value={filterStatus}
+                          onChange={(e) => setFilterStatus(e.target.value)}
+                          className="bg-white dark:bg-surface border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="all">All status</option>
+                          <option value="vacant">Vacant ({vacantCount})</option>
+                          <option value="occupied">Occupied ({occupiedCount})</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── TAB 1: PROPERTIES GRID ─── */}
+                  {propSubTab === 'properties' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {properties.map((p) => {
+                        const propUnits = units.filter((u) => u.propertyId === p.id || u.property === p.id);
+                        const occupiedUnits = propUnits.filter((u) => u.status === 'occupied').length;
+                        const occRate = propUnits.length > 0 ? Math.round((occupiedUnits / propUnits.length) * 100) : (p.occupancyRate || 0);
+                        return (
+                          <div
+                            key={p.id}
+                            className="top-shade apple-glass rounded-3xl border border-slate-200 dark:border-slate-800/80 overflow-hidden hover:border-indigo-400 dark:hover:border-slate-700 transition-all flex flex-col justify-between shadow-sm group"
+                          >
+                            <div>
+                              {/* Property Image & Badge Header */}
+                              <div className="h-32 bg-slate-900 relative overflow-hidden flex items-center justify-center">
+                                <img
+                                  src={p.image || '/images/property-1.jpg'}
+                                  alt={p.name}
+                                  className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500"
+                                  onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80'; }}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                                <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono uppercase tracking-wider bg-indigo-600/90 text-white backdrop-blur-md shadow-sm">
+                                    {p.category || 'Residential'}
+                                  </span>
+                                  {p.featured && (
+                                    <span className="badge badge-warning font-mono text-white">
+                                      Featured
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* View / Change photo / Delete actions */}
+                                <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setViewingPropertyId(p.id); }}
+                                    title="View property"
+                                    aria-label={`View ${p.name}`}
+                                    className="p-2 rounded-xl bg-slate-950/70 hover:bg-indigo-600 text-slate-300 hover:text-white backdrop-blur-md transition-all btn-press border border-white/10 shadow-md"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); chooseNewPropertyImage(p.id); }}
+                                    disabled={imageUploadingId === p.id}
+                                    title="Change photo"
+                                    aria-label={`Change photo for ${p.name}`}
+                                    className="p-2 rounded-xl bg-slate-950/70 hover:bg-indigo-600 text-slate-300 hover:text-white backdrop-blur-md transition-all btn-press border border-white/10 shadow-md disabled:opacity-50"
+                                  >
+                                    <Camera className={`w-3.5 h-3.5 ${imageUploadingId === p.id ? 'animate-pulse' : ''}`} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedPropertyForDelete(p);
+                                    }}
+                                    title="Delete Property"
+                                    className="p-2 rounded-xl bg-slate-950/70 hover:bg-rose-600 text-slate-300 hover:text-white backdrop-blur-md transition-all btn-press border border-white/10 shadow-md"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                <div className="absolute bottom-3 left-3 right-3">
+                                  <h3 className="text-base font-bold font-grotesk text-white truncate drop-shadow-sm">
+                                    {p.name}
+                                  </h3>
+                                  <p className="text-xs text-slate-300 flex items-center gap-1 mt-0.5 truncate">
+                                    <MapPin className="w-3 h-3 text-indigo-400 shrink-0" /> {p.address}, {p.city}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Stats Metrics Matrix */}
+                              <div className="p-4 space-y-3">
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60">
+                                    <span className="text-xs font-mono text-slate-500 block">Units</span>
+                                    <span className="text-sm font-extrabold font-grotesk text-slate-900 dark:text-white">{propUnits.length}</span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60">
+                                    <span className="text-xs font-mono text-slate-500 block">Occupied</span>
+                                    <span className="text-sm font-extrabold font-grotesk text-emerald-600 dark:text-emerald-400">{occupiedUnits}</span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60">
+                                    <span className="text-xs font-mono text-slate-500 block">Occupancy</span>
+                                    <span className="text-sm font-extrabold font-grotesk text-indigo-600 dark:text-indigo-400">{occRate}%</span>
+                                  </div>
+                                </div>
+
+                                {/* Occupancy Progress Bar */}
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs font-mono text-slate-500">
+                                    <span>Occupancy status</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">{occupiedUnits} / {propUnits.length} Units</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
+                                      style={{ width: `${occRate}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="p-4 pt-0 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 mt-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedPropertyForDelete(p);
+                                }}
+                                className="btn btn-danger-soft border text-xs font-grotesk flex items-center gap-1.5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete Property
+                              </button>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setViewingPropertyId(p.id)}
+                                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold font-grotesk btn-press flex items-center gap-1.5"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> View
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setAddPropPreselectedPropertyId(p.id);
+                                    setAddPropUnitTab('unit');
+                                    setIsAddPropUnitOpen(true);
+                                  }}
+                                  className="btn btn-primary text-xs font-grotesk flex items-center gap-1.5"
+                                >
+                                  <Layers className="w-3.5 h-3.5" /> + Add Unit
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ─── TAB 2: ALL UNITS GRID ─── */}
+                  {propSubTab === 'units' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {filteredUnits.map((u) => {
+                        const isVacant = u.status === 'vacant';
+                        return (
+                          <div key={u.id} className="top-shade apple-glass rounded-2xl border border-slate-200 dark:border-slate-800/80 p-5 hover:border-indigo-400 dark:hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 shadow-xs">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{u.propertyName}</span>
+                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider font-mono ${isVacant ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'}`}>
+                                  {u.status}
+                                </span>
+                              </div>
+                              <h3 className="text-lg font-bold font-grotesk text-slate-900 dark:text-white mb-1">{u.label}</h3>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{u.bedrooms} Bed &bull; {u.bathrooms} Bath &bull; {u.sqft} sqft</p>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-surface-sunken border border-slate-200/80 dark:border-slate-800/60 text-xs font-mono">
+                              <div className="flex justify-between mb-1"><span className="text-slate-500">Rent:</span><span className="font-bold text-slate-900 dark:text-white">${u.monthlyRent}/mo</span></div>
+                              <div className="flex justify-between"><span className="text-slate-500">Occupant:</span><span className={isVacant ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-slate-900 dark:text-slate-200 font-semibold'}>{isVacant ? 'None (Vacant)' : u.tenantName}</span></div>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                              <button onClick={() => setSelectedUnitForDetail(u)} className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 btn-press flex items-center gap-1">
+                                Details <ArrowUpRight className="w-3.5 h-3.5" />
+                              </button>
+                              {isVacant && (
+                                <button onClick={() => handleOpenAddTenant(u.propertyId, u.id)} className="btn btn-primary text-xs font-grotesk flex items-center gap-1.5">
+                                  <UserPlus className="w-3.5 h-3.5" /> Add tenant
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {filteredUnits.length === 0 && (
+                        <div className="col-span-full p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-400">
+                          No units matching search criteria.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ═══════════════════════════════════════ */}
+              {/* ─── VIEW 4: TENANTS DIRECTORY (full CRUD) */}
+              {/* ═══════════════════════════════════════ */}
+              {activeView === 'tenants' && (
+                <div className="space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="text-2xl font-extrabold font-grotesk text-slate-900 dark:text-white">Tenants Directory</h1>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Manage tenant profiles, active leases, and pre-added occupants.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => handleOpenAddTenant()} className="btn btn-primary text-xs font-grotesk flex items-center gap-2">
+                        <UserPlus className="w-4 h-4" /> + Add Tenant
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search & Filter */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                      <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search tenants…"
+                        className="w-full bg-white dark:bg-surface border border-slate-300 dark:border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                      className="bg-white dark:bg-surface border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="all">All tenants</option>
+                      <option value="occupied">Active Leases</option>
+                      <option value="pre_added">Pre-added / Unassigned</option>
+                    </select>
+                  </div>
+
+                  {tenants.some((tenant) => tenant.approvalStatus === 'pending') && (
+                    <section className="space-y-3 rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4 dark:border-amber-900/70 dark:bg-amber-950/20">
+                      <div><h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">Tenant requests awaiting approval</h2><p className="text-xs text-amber-800/80 dark:text-amber-300/80">Approved residents receive their sign-in credentials by email.</p></div>
+                      {tenants.filter((tenant) => tenant.approvalStatus === 'pending').map((tenant) => <div key={tenant.id || tenant._id} className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-surface"><div><p className="text-sm font-semibold">{tenant.name}</p><p className="text-xs text-slate-500">{tenant.email} · {tenant.propertyName} · {tenant.unitLabel}</p><p className="text-xs text-slate-500">₱{Number(tenant.monthlyRent || 0).toLocaleString('en-PH')}/month</p></div><div className="flex gap-2"><button disabled={reviewingTenantId === (tenant.id || tenant._id)} onClick={() => handleReviewTenantApproval(tenant, 'approve')} className="btn btn-primary text-xs">Approve & invite</button><button disabled={reviewingTenantId === (tenant.id || tenant._id)} onClick={() => handleReviewTenantApproval(tenant, 'reject')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Decline</button></div></div>)}
+                    </section>
+                  )}
+
+                  {/* Tenants Table */}
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden apple-glass shadow-xs top-shade">
+                    {filteredTenants.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400 font-mono">No tenants match the search filter.</div>
+                    ) : (
+                      filteredTenants.map((t, idx) => {
+                        const duration = t.leaseType === 'indefinite' ? 'Indefinite' : getLeaseDuration(t.leaseStart, t.leaseEnd);
+                        const expiration = getLeaseExpirationInfo(t.leaseEnd);
+                        const isAssigned = Boolean(t.unitId && t.unitId !== 'pre_add_unassigned');
+
+                        return (
+                          <div key={t.id || t._id || `tenant-${idx}`} className="p-4 sm:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
+                            {/* Tenant Identity */}
+                            <div className="space-y-1 min-w-[200px]">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white font-grotesk">{t.name}</h3>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase font-mono ${t.approvalStatus === 'pending'
+                                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
+                                    : t.approvalStatus === 'rejected'
+                                      ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20'
+                                      : isAssigned
+                                    ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'
+                                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                                  }`}>
+                                  {t.approvalStatus === 'pending' ? 'Awaiting Approval' : t.approvalStatus === 'rejected' ? 'Request Declined' : isAssigned ? 'Active Lease' : 'Unassigned'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{t.email} {t.phone ? `• ${t.phone}` : ''}</p>
+                              {t.emergencyContact?.name && <p className="text-xs text-slate-500 dark:text-slate-400">Emergency: {t.emergencyContact.name}{t.emergencyContact.relationship ? ` (${t.emergencyContact.relationship})` : ''} • <span className="font-mono">{t.emergencyContact.phone}</span></p>}
+                            </div>
+
+                            {/* Property, Unit, Rent, Duration, Expiration Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 text-xs font-mono items-center flex-1">
+                              {/* Property & Unit */}
+                              <div>
+                                <span className="text-slate-400 block text-xs uppercase tracking-wider font-semibold mb-0.5">Property & Unit</span>
+                                {isAssigned ? (
+                                  <div className="flex flex-col">
+                                    <strong className="text-slate-900 dark:text-white flex items-center gap-1 truncate font-sans text-xs">
+                                      <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                      {t.propertyName || 'Property'}
+                                    </strong>
+                                    <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1 text-xs">
+                                      <Home className="w-3 h-3 text-slate-400 shrink-0" />
+                                      {t.unitLabel || 'Unit'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-amber-600 dark:text-amber-400 text-xs italic font-sans font-medium">Unassigned</span>
+                                )}
+                              </div>
+
+                              {/* Rent */}
+                              <div>
+                                <span className="text-slate-400 block text-xs uppercase tracking-wider font-semibold mb-0.5">Rent</span>
+                                {t.monthlyRent > 0 ? (
+                                  <strong className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">${t.monthlyRent}/mo</strong>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </div>
+
+                              {/* Lease Duration */}
+                              <div>
+                                <span className="text-slate-400 block text-xs uppercase tracking-wider font-semibold mb-0.5">Lease Duration</span>
+                                {duration ? (
+                                  <div className="flex items-center gap-1 text-slate-800 dark:text-slate-200">
+                                    <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                    <strong>{duration}</strong>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">No active term</span>
+                                )}
+                              </div>
+
+                              {/* Expiration Date & Status */}
+                              <div>
+                                <span className="text-slate-400 block text-xs uppercase tracking-wider font-semibold mb-0.5">Expiration</span>
+                                {expiration ? (
+                                  <div className="space-y-1">
+                                    <strong className="text-slate-900 dark:text-slate-100 block">{expiration.formattedDate}</strong>
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold font-mono ${expiration.statusClass}`}>
+                                      {expiration.badgeText}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">{t.leaseType === 'indefinite' ? 'No fixed expiration' : '—'}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
+                              {t.approvalStatus !== 'pending' && <button
+                                onClick={() => setAssigningTenant(t)}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-grotesk btn-press flex items-center gap-1.5 transition-all ${!isAssigned
+                                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/30'
+                                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                              >
+                                <Key className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>{!isAssigned ? 'Assign Unit' : 'Manage Lease'}</span>
+                              </button>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══════════════════════════════════════════ */}
+              {/* ─── VIEW 5: MAINTENANCE QUEUE (full CRUD) ─── */}
+              {/* ═══════════════════════════════════════════ */}
+              {activeView === 'tickets' && (
+                <TicketsTab
+                  tickets={tickets}
+                  searchQuery={searchQuery}
+                  onOpenNewTicket={() => setIsNewTicketOpen(true)}
+                  onUpdateStatus={handleUpdateTicketStatus}
+                  onDeleteTicket={handleDeleteTicket}
+                  onAssignTechnician={handleAssignTechnician}
+                />
+              )}
+
+              {/* ═════════════════════════════════════ */}
+              {/* ─── VIEW 6: RENT ROLL (full CRUD) ───── */}
+              {/* ═════════════════════════════════════ */}
+              {activeView === 'payments' && (
+                <LandlordPaymentsPage payments={payments} searchQuery={searchQuery} />
+              )}
+
+              {/* ─── VIEW 7: DOCUMENTS & VERIFICATION ─── */}
+              {activeView === 'reports' && <ReportsTab properties={properties} />}
+
+              {activeView === 'documents' && (
+                <LandlordDocumentsTab
+                  properties={properties}
+                  units={units}
+                  tenants={tenants}
+                  documents={documents}
+                  landlordName={[user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || ''}
+                  onUpdateDocumentStatus={handleUpdateDocumentStatus}
+                />
+              )}
+
+              {/* ─── VIEW 8: LANDLORD SETTINGS ─── */}
+              {activeView === 'settings' && (
+                <LandlordSettingsTab
+                  properties={properties}
+                  units={units}
+                  tenants={tenants}
+                />
+              )}
+
+              {/* ─── VIEW 9: LEASE EXTENSIONS ─── */}
+              {activeView === 'lease-extensions' && (
+                <LeaseExtensionsTab />
+              )}
+              {activeView === 'eviction-notices' && (
+                <EvictionNoticesTab />
+              )}
+              {activeView === 'staff' && <StaffManagementTab />}
+              {activeView === 'inventory' && <InventoryTab />}
+              {activeView === 'messages' && <WorkspaceMessagesTab />}
+            </div>
+          )}
+
+        </main>
+      </div>
+
+      {/* ─── TOAST NOTIFICATION ─── */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white border border-indigo-500/40 shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-semibold font-grotesk">{toastNotification}</span>
+        </div>
+      )}
+
+      {/* ─── RIGHT SIDEBAR: NOTIFICATIONS ─── */}
+      <RightNotificationSidebar isOpen={isNotificationOpen} onClose={() => setIsNotificationOpen(false)} />
+
+      {/* ─── MODALS ─── */}
+      <CommandPaletteModal isOpen={isCommandPaletteOpen} onClose={() => setIsCommandPaletteOpen(false)} properties={properties} units={units} tenants={tenants} tickets={tickets} onSelectResult={handleCommandPaletteSelect} />
+      <AddTenantModal
+        isOpen={isAddTenantOpen}
+        onClose={() => setIsAddTenantOpen(false)}
+        properties={properties}
+        units={units}
+        tenants={tenants}
+        initialPropertyId={addTenantPropertyId}
+        initialUnitId={addTenantUnitId}
+        onTenantAdded={handleTenantAdded}
+        onTenantAssigned={handleTenantAssigned}
+      />
+      <UnitDetailModal isOpen={Boolean(selectedUnitForDetail)} unit={selectedUnitForDetail} property={properties.find((p) => p.id === selectedUnitForDetail?.propertyId)} onClose={() => setSelectedUnitForDetail(null)} onAddTenant={handleOpenAddTenant} />
+      <NewTicketModal isOpen={isNewTicketOpen} onClose={() => setIsNewTicketOpen(false)} properties={properties} units={units} onTicketCreated={handleTicketCreated} />
+      <NewAnnouncementModal isOpen={isNewAnnouncementOpen} onClose={() => setIsNewAnnouncementOpen(false)} onAnnouncementCreated={handleAnnouncementCreated} />
+
+      {/* Add Property / Unit Modal */}
+      <AddPropertyOrUnitModal
+        isOpen={isAddPropUnitOpen}
+        onClose={() => setIsAddPropUnitOpen(false)}
+        initialTab={addPropUnitTab}
+        properties={properties}
+        initialPropertyId={addPropPreselectedPropertyId}
+        defaultTimezone={user?.timezone || 'Asia/Manila'}
+        onPropertyCreated={handleDashboardPropertyCreated}
+        onUnitCreated={handleDashboardUnitCreated}
+      />
+
+      {/* Hidden picker for property cover photos */}
+      <input ref={propertyImageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePropertyImageSelected} />
+
+      {viewingPropertyId && (
+        <PropertyDetailsModal
+          property={properties.find((p) => String(p.id) === String(viewingPropertyId))}
+          units={units}
+          tenants={tenants}
+          onClose={() => setViewingPropertyId(null)}
+          onChangeImage={() => chooseNewPropertyImage(viewingPropertyId)}
+          onAddUnit={() => { setAddPropPreselectedPropertyId(viewingPropertyId); setAddPropUnitTab('unit'); setIsAddPropUnitOpen(true); setViewingPropertyId(null); }}
+        />
+      )}
+
+      {/* Delete Property Modal */}
+      <DeletePropertyModal
+        isOpen={Boolean(selectedPropertyForDelete)}
+        onClose={() => setSelectedPropertyForDelete(null)}
+        property={selectedPropertyForDelete}
+        units={units}
+        onConfirmDelete={handleDeleteProperty}
+      />
+
+      {/* Assign Tenant Modal */}
+      <AssignTenantModal
+        isOpen={Boolean(assigningTenant)}
+        onClose={() => setAssigningTenant(null)}
+        tenant={assigningTenant}
+        properties={properties}
+        units={units}
+        onTenantAssigned={handleTenantAssigned}
+      />
+
+      {/* Logout Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showLogoutConfirm}
+        onClose={() => !isLoggingOut && setShowLogoutConfirm(false)}
+        onConfirm={handleConfirmLogout}
+        title="Log Out of JPTL?"
+        description="Are you sure you want to log out of your landlord account? You will need to sign in again to access the portal."
+        confirmText={isLoggingOut ? 'Logging out...' : 'Log Out'}
+        cancelText="Cancel"
+        variant="danger"
+        loading={isLoggingOut}
+        icon={LogOut}
+      />
+
+      {/* ─── MOBILE BOTTOM NAVIGATION BAR ─── */}
+      <MobileNavBar
+        items={[
+          { key: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+          { key: 'units', label: 'Units', icon: Building2 },
+          { key: 'tickets', label: 'Repairs', icon: Wrench, badge: pendingTickets || undefined },
+          { key: 'payments', label: 'Rent Roll', icon: DollarSign },
+        ]}
+        activeKey={activeView}
+        onSelect={handleViewChange}
+        onOpenMore={() => setIsMobileNavOpen(true)}
+      />
+
+      {/* ─── MOBILE NAV DRAWER (MORE SHEET) ─── */}
+      <MobileNavDrawer
+        isOpen={isMobileNavOpen}
+        onClose={() => setIsMobileNavOpen(false)}
+        user={user}
+        roleTitle="Landlord"
+        metaInfo="Property Admin"
+        items={[
+          { key: 'overview', label: 'Executive Dashboard', icon: LayoutDashboard },
+          { key: 'units', label: 'Properties & Units', icon: Building2 },
+          { key: 'tenants', label: 'Tenants Directory', icon: Users },
+          { key: 'payments', label: 'Rent Roll & Financials', icon: DollarSign },
+          { key: 'reports', label: 'Reports & Exports', icon: FileCheck },
+          { key: 'tickets', label: 'Maintenance Pipeline', icon: Wrench, badge: pendingTickets || undefined },
+          { key: 'announcements', label: 'Announcements Broadcast', icon: Megaphone },
+          { key: 'documents', label: 'Documents & Verification', icon: FileCheck, badge: documents.filter((d) => d.status === 'Pending Review').length || undefined },
+          { key: 'lease-extensions', label: 'Lease Extensions', icon: CalendarClock },
+          { key: 'eviction-notices', label: 'Eviction Notices', icon: ShieldAlert },
+          { key: 'staff', label: 'Staff', icon: Users },
+          { key: 'settings', label: 'Console Settings', icon: Settings },
+        ]}
+        activeKey={activeView}
+        onSelect={handleViewChange}
+        onLogout={handleLogout}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+
+    </div>
+  );
+};

@@ -1,0 +1,392 @@
+{
+  "info": {
+    "name": "Landlord – Tenant Directory Module",
+    "description": "Postman/Bruno test collection for Landlord Tenant Directory endpoints.\nIncludes listing with search/status filters, single tenant inspection, creating active & pre-added tenants, updating lease/unit details, deletion, and role guards.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "landlord_token", "value": "", "type": "string" },
+    { "key": "tenant_token", "value": "", "type": "string" },
+    { "key": "created_tenant_id", "value": "", "type": "string" },
+    { "key": "sample_unit_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth – Login as Landlord",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const token = res.token || (res.data && res.data.token);",
+              "if (token) {",
+              "  pm.collectionVariables.set('landlord_token', token);",
+              "  console.log('Landlord token saved.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"landlord@jptl.dev\",\n  \"password\": \"Password123!\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Auth – Login as Tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const token = res.token || (res.data && res.data.token);",
+              "if (token) {",
+              "  pm.collectionVariables.set('tenant_token', token);",
+              "  console.log('Tenant token saved.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"sophia@jptl.dev\",\n  \"password\": \"Password123!\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "1. Get All Tenants (Full Directory & Summary)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Returns tenants array', () => pm.expect(Array.isArray(res.data)).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"]
+        }
+      }
+    },
+    {
+      "name": "2. Search Tenants (by Name, Email, or Unit)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Returns filtered array', () => pm.expect(Array.isArray(res.data)).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory?search=Sophia",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"],
+          "query": [
+            { "key": "search", "value": "Sophia" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Filter Tenants by Status – Active Leases",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Returns active leases', () => pm.expect(Array.isArray(res.data)).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory?status=active",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"],
+          "query": [
+            { "key": "status", "value": "active" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Filter Tenants by Status – Pre-added / Unassigned",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Returns pre_added list', () => pm.expect(Array.isArray(res.data)).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory?status=pre_added",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"],
+          "query": [
+            { "key": "status", "value": "pre_added" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Create Tenant – Pre-Added Unassigned",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.variables.set('test_tenant_email', 'temp.tenant.' + Date.now() + '@example.com');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "if (res.data && res.data.id) {",
+              "  pm.collectionVariables.set('created_tenant_id', res.data.id);",
+              "  console.log('Saved created_tenant_id:', res.data.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Elena\",\n  \"middleName\": \"\",\n  \"lastName\": \"Rostova\",\n  \"email\": \"{{test_tenant_email}}\",\n  \"phone\": \"+1-555-0199\",\n  \"unitId\": \"pre_add_unassigned\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"]
+        }
+      }
+    },
+    {
+      "name": "6. Get Single Tenant Details",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Tenant details returned', () => pm.expect(res.data).to.be.ok);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory/{{created_tenant_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory", "{{created_tenant_id}}"]
+        }
+      }
+    },
+    {
+      "name": "7. Update Tenant Profile & Lease Details",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+1-555-9876\",\n  \"monthlyRent\": 2600,\n  \"leaseStart\": \"2026-10-01\",\n  \"leaseEnd\": \"2027-09-30\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory/{{created_tenant_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory", "{{created_tenant_id}}"]
+        }
+      }
+    },
+    {
+      "name": "8. Delete / Offboard Tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Tenant deleted', () => pm.expect(res.success).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory/{{created_tenant_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory", "{{created_tenant_id}}"]
+        }
+      }
+    },
+    {
+      "name": "9. Guard Test – No Token (expect 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"]
+        }
+      }
+    },
+    {
+      "name": "10. Guard Test – Tenant Hits Landlord Route (expect 403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 403 Forbidden', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"]
+        }
+      }
+    },
+    {
+      "name": "11. Validation Test – Invalid Email Format (expect 400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Test\",\n  \"email\": \"invalid-email-format\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/landlord/tenantdirectory",
+          "host": ["{{base_url}}"],
+          "path": ["api", "landlord", "tenantdirectory"]
+        }
+      }
+    }
+  ]
+}
